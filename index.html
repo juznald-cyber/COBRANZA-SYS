@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cocuyo · Control de Facturación y Cobranza</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#273449; --line:#334155;
+    --txt:#e2e8f0; --muted:#94a3b8; --brand:#38bdf8; --brand2:#0ea5e9;
+    --ok:#22c55e; --warn:#f59e0b; --danger:#ef4444; --info:#8b5cf6;
+    --pend:#f59e0b; --fact:#3b82f6; --cobr:#22c55e; --factz:#a855f7;
+    --radius:12px; --shadow:0 8px 24px rgba(0,0,0,.28);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',system-ui,-apple-system,Roboto,Arial,sans-serif;background:var(--bg);color:var(--txt);font-size:14px}
+  header{background:linear-gradient(135deg,#0ea5e9,#6366f1);padding:14px 22px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow);position:sticky;top:0;z-index:50}
+  header .logo{width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,.15);display:flex;align-items:center;justify-content:center;font-size:22px}
+  header h1{font-size:18px;margin:0;font-weight:700;letter-spacing:.3px}
+  header .sub{font-size:12px;opacity:.85;margin-top:2px}
+  header .spacer{flex:1}
+  header .save-ind{font-size:12px;background:rgba(255,255,255,.15);padding:6px 12px;border-radius:20px}
+
+  nav{display:flex;gap:6px;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap;position:sticky;top:68px;z-index:40}
+  nav button{background:transparent;border:1px solid transparent;color:var(--muted);padding:9px 16px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;transition:.15s}
+  nav button:hover{color:var(--txt);background:var(--panel2)}
+  nav button.active{background:var(--brand);color:#04263a;border-color:var(--brand)}
+
+  main{padding:22px;max-width:1500px;margin:0 auto}
+  .view{display:none;animation:fade .25s ease}
+  .view.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+  .toolbar .grow{flex:1}
+  input,select,textarea{background:var(--panel2);border:1px solid var(--line);color:var(--txt);padding:8px 10px;border-radius:8px;font-size:13px;font-family:inherit}
+  input:focus,select:focus{outline:2px solid var(--brand2);border-color:var(--brand2)}
+  label.fld{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+
+  button.btn{background:var(--brand);color:#04263a;border:none;padding:9px 16px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;transition:.15s}
+  button.btn:hover{filter:brightness(1.08)}
+  button.btn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+  button.btn.ghost:hover{border-color:var(--brand)}
+  button.btn.danger{background:var(--danger);color:#fff}
+  button.btn.ok{background:var(--ok);color:#062012}
+  button.btn.sm{padding:5px 10px;font-size:12px}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:22px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+  .card .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+  .card .v{font-size:26px;font-weight:800;margin-top:6px}
+  .card .m{font-size:12px;color:var(--muted);margin-top:4px}
+  .card.accent{border-left:4px solid var(--brand)}
+
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:20px;box-shadow:var(--shadow)}
+  .panel h3{margin:0 0 14px;font-size:15px;display:flex;align-items:center;gap:8px}
+  .panel h3 .badge{font-size:11px;background:var(--panel2);color:var(--muted);padding:3px 9px;border-radius:12px;font-weight:600}
+
+  .table-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--line)}
+  table{border-collapse:collapse;width:100%;min-width:900px;font-size:13px}
+  th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{background:var(--panel2);color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0}
+  tbody tr:hover{background:rgba(56,189,248,.06)}
+  td input,td select{width:100%;min-width:90px;padding:5px 7px;font-size:12px;background:transparent;border:1px solid transparent}
+  td input:hover,td select:hover{border-color:var(--line)}
+  td input:focus,td select:focus{background:var(--panel2)}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  td.center{text-align:center}
+
+  .chk{width:18px;height:18px;accent-color:var(--brand);cursor:pointer}
+
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+  .pill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+  .pill.pend{background:rgba(245,158,11,.15);color:#fbbf24}
+  .pill.fact{background:rgba(59,130,246,.15);color:#60a5fa}
+  .pill.cobr{background:rgba(34,197,94,.15);color:#4ade80}
+  .pill.factz{background:rgba(168,85,247,.15);color:#c084fc}
+
+  .pipe{display:flex;gap:3px;align-items:center}
+  .pipe .step{width:22px;height:8px;border-radius:4px;background:var(--line)}
+  .pipe .step.on{background:var(--ok)}
+
+  /* status select coloring */
+  select.st-pend{color:#fbbf24}
+  select.st-fact{color:#60a5fa}
+  select.st-cobr{color:#4ade80}
+  select.st-factz{color:#c084fc}
+
+  .matrix td, .matrix th{text-align:center;min-width:66px}
+  .matrix td.cli{text-align:left;font-weight:600;position:sticky;left:0;background:var(--panel);z-index:2}
+  .matrix th.cli{position:sticky;left:0;background:var(--panel2);z-index:3;text-align:left}
+  .cell{display:inline-block;width:100%;height:22px;line-height:22px;border-radius:5px;font-size:10px;font-weight:700}
+  .cell.pend{background:rgba(245,158,11,.25);color:#fbbf24}
+  .cell.fact{background:rgba(59,130,246,.25);color:#93c5fd}
+  .cell.cobr{background:rgba(34,197,94,.25);color:#86efac}
+  .cell.factz{background:rgba(168,85,247,.25);color:#d8b4fe}
+  .cell.none{background:transparent;color:var(--line)}
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+
+  .empty{text-align:center;padding:40px;color:var(--muted)}
+  .hint{background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.3);border-radius:10px;padding:12px 14px;font-size:13px;color:#bae6fd;margin-bottom:16px}
+  .hint b{color:#e0f2fe}
+
+  .row-actions{display:flex;gap:5px}
+  footer{text-align:center;padding:24px;color:var(--muted);font-size:12px}
+
+  /* modal */
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:100;padding:20px}
+  .modal-bg.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;max-width:640px;width:100%;box-shadow:var(--shadow);max-height:88vh;overflow:auto}
+  .modal h3{margin-top:0}
+  .modal .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .modal .grid2 .full{grid-column:1/3}
+  .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+  .drop{border:2px dashed var(--line);border-radius:12px;padding:26px;text-align:center;color:var(--muted);cursor:pointer;transition:.15s}
+  .drop:hover,.drop.drag{border-color:var(--brand);color:var(--brand);background:rgba(56,189,248,.05)}
+  .toast{position:fixed;bottom:22px;right:22px;background:var(--ok);color:#052012;padding:12px 18px;border-radius:10px;font-weight:700;box-shadow:var(--shadow);z-index:200;opacity:0;transform:translateY(12px);transition:.25s;pointer-events:none}
+  .toast.show{opacity:1;transform:none}
+  .toast.err{background:var(--danger);color:#fff}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">🛡️</div>
+  <div>
+    <h1>Cocuyo · Control de Facturación y Cobranza</h1>
+    <div class="sub">Servicios de guardias · Prefactura → OC → HES/ROC → Factura → SII → Cobro / Factorización</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="save-ind" id="saveInd">Guardado automático ✓</div>
+</header>
+
+<nav>
+  <button data-view="dashboard" class="active">📊 Resumen</button>
+  <button data-view="cobranza">🧾 Cobranza (Ingreso)</button>
+  <button data-view="tecnologia">💻 Tecnología</button>
+  <button data-view="clientes">🏢 Clientes fijos</button>
+  <button data-view="datos">📥 Importar / Exportar</button>
+</nav>
+
+<main>
+  <!-- ============ DASHBOARD ============ -->
+  <section id="dashboard" class="view active">
+    <div class="cards" id="kpis"></div>
+
+    <div class="panel">
+      <h3>Resumen por cliente y mes <span class="badge" id="matYear"></span>
+        <span class="spacer" style="flex:1"></span>
+        <select id="matYearSel" style="margin-left:auto"></select>
+      </h3>
+      <div class="table-wrap">
+        <table class="matrix" id="matrixTbl"></table>
+      </div>
+      <div class="legend">
+        <span><i style="background:#f59e0b"></i> Pendiente</span>
+        <span><i style="background:#3b82f6"></i> Facturado</span>
+        <span><i style="background:#22c55e"></i> Cobrado</span>
+        <span><i style="background:#a855f7"></i> Factorizado</span>
+        <span><i style="background:var(--line)"></i> Sin servicio</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Montos por estado de cobranza</h3>
+      <div class="cards" id="montoCards"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Facturas factorizadas por entidad financiera</h3>
+      <div id="factzBox"></div>
+    </div>
+  </section>
+
+  <!-- ============ COBRANZA ============ -->
+  <section id="cobranza" class="view">
+    <div class="hint">
+      Flujo por registro: marca cada hito a medida que avanza. El estado general se puede ajustar manualmente.
+      La <b>fecha de vencimiento</b> se calcula sola: fecha de factura + 30 días.
+    </div>
+    <div class="toolbar">
+      <label class="fld">Buscar
+        <input id="cbSearch" placeholder="Cliente, factura, OC..." style="min-width:220px">
+      </label>
+      <label class="fld">Mes servicio
+        <select id="cbMes"><option value="">Todos</option></select>
+      </label>
+      <label class="fld">Cliente
+        <select id="cbCli"><option value="">Todos</option></select>
+      </label>
+      <label class="fld">Estado
+        <select id="cbEst">
+          <option value="">Todos</option>
+          <option>Pendiente</option><option>Facturado</option><option>Cobrado</option><option>Factorizado</option>
+        </select>
+      </label>
+      <div class="grow"></div>
+      <button class="btn" id="cbAdd">+ Agregar registro</button>
+    </div>
+    <div class="panel" style="padding:0">
+      <div class="table-wrap">
+        <table id="cbTable"></table>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted)">
+      Mostrando <b id="cbCount">0</b> registros · Los cambios se guardan automáticamente.
+    </div>
+  </section>
+
+  <!-- ============ TECNOLOGIA ============ -->
+  <section id="tecnologia" class="view">
+    <div class="hint">
+      Servicios de <b>tecnología</b> (esporádicos), llevados por separado. Campos: Mes de servicio, RUT cliente, N° cotización, factura, orden de compra, HES (si corresponde) y estado.
+    </div>
+    <div class="toolbar">
+      <label class="fld">Buscar
+        <input id="tcSearch" placeholder="Cliente, cotización, factura..." style="min-width:220px">
+      </label>
+      <label class="fld">Estado
+        <select id="tcEst">
+          <option value="">Todos</option>
+          <option>Pendiente</option><option>Facturado</option><option>Cobrado</option><option>Factorizado</option>
+        </select>
+      </label>
+      <div class="grow"></div>
+      <button class="btn" id="tcAdd">+ Agregar servicio</button>
+    </div>
+    <div class="panel" style="padding:0">
+      <div class="table-wrap">
+        <table id="tcTable"></table>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted)">Mostrando <b id="tcCount">0</b> servicios.</div>
+  </section>
+
+  <!-- ============ CLIENTES ============ -->
+  <section id="clientes" class="view">
+    <div class="hint">Administra tus <b>clientes fijos</b> (supermercados). Aparecen en el resumen mensual y en los selectores.</div>
+    <div class="toolbar">
+      <div class="grow"></div>
+      <button class="btn" id="clAdd">+ Agregar cliente</button>
+    </div>
+    <div class="panel" style="padding:0">
+      <div class="table-wrap">
+        <table id="clTable"></table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DATOS ============ -->
+  <section id="datos" class="view">
+    <div class="panel">
+      <h3>📤 Exportar</h3>
+      <p style="color:var(--muted);margin-top:0">Descarga toda tu información en un archivo Excel (varias hojas) o guarda una copia de seguridad en JSON.</p>
+      <div class="toolbar">
+        <button class="btn" id="expXlsx">Descargar Excel (.xlsx)</button>
+        <button class="btn ghost" id="expJson">Copia de seguridad (.json)</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>📥 Importar / Carga masiva</h3>
+      <p style="color:var(--muted);margin-top:0">
+        1) Descarga la plantilla, 2) rellénala en Excel, 3) súbela aquí. Se agregan (o actualizan por N° de factura) los registros.
+      </p>
+      <div class="toolbar">
+        <button class="btn ok" id="tplCob">⬇ Plantilla Cobranza (.xlsx)</button>
+        <button class="btn ok" id="tplTec">⬇ Plantilla Tecnología (.xlsx)</button>
+      </div>
+      <div style="margin-top:16px">
+        <label class="fld" style="flex-direction:row;align-items:center;gap:10px;text-transform:none">
+          Destino de la carga:
+          <select id="impTarget">
+            <option value="cobranza">Cobranza (Ingreso)</option>
+            <option value="tecnologia">Tecnología</option>
+          </select>
+        </label>
+      </div>
+      <div class="drop" id="drop" style="margin-top:14px">
+        <div style="font-size:34px">📁</div>
+        <div>Arrastra tu archivo <b>.xlsx</b> o <b>.csv</b> aquí, o haz clic para seleccionarlo</div>
+        <input type="file" id="fileInp" accept=".xlsx,.xls,.csv" style="display:none">
+      </div>
+      <div id="impResult" style="margin-top:12px;font-size:13px"></div>
+    </div>
+
+    <div class="panel">
+      <h3>♻ Restaurar / Reiniciar</h3>
+      <div class="toolbar">
+        <label class="fld" style="text-transform:none">Restaurar desde copia .json
+          <input type="file" id="restoreInp" accept=".json">
+        </label>
+        <div class="grow"></div>
+        <button class="btn danger" id="wipe">Borrar todos los datos</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>Cocuyo · Sistema de control de cobranza · Los datos se guardan en este navegador (localStorage).</footer>
+
+<!-- Modal editor -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal" id="modalBox"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =========================================================
+   COCUYO · Control de Facturación y Cobranza
+   Datos persistidos en localStorage.
+   ========================================================= */
+const LS_KEY = "cocuyo_cobranza_v1";
+const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const ESTADOS = ["Pendiente","Facturado","Cobrado","Factorizado"];
+const stClass = {Pendiente:"pend",Facturado:"fact",Cobrado:"cobr",Factorizado:"factz"};
+
+// ---- Default seed (EJEMPLOS - editables/borrables) ----
+const SEED = {
+  clientes: [
+    {id:cid(), nombre:"Supermercado (ejemplo A)", rut:"76.111.111-1"},
+    {id:cid(), nombre:"Supermercado (ejemplo B)", rut:"77.222.222-2"}
+  ],
+  cobranza: [],
+  tecnologia: [],
+  meta:{ejemplo:true}
+};
+
+function cid(){return 'id'+Math.random().toString(36).slice(2,10)}
+function nowYear(){return new Date().getFullYear()}
+
+let DB = load();
+
+function load(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw) return JSON.parse(raw);
+  }catch(e){}
+  return JSON.parse(JSON.stringify(SEED));
+}
+let saveTimer=null;
+function save(){
+  localStorage.setItem(LS_KEY, JSON.stringify(DB));
+  const ind=document.getElementById('saveInd');
+  ind.textContent="Guardando...";
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>ind.textContent="Guardado automático ✓",400);
+}
+
+/* ---------- helpers ---------- */
+function fmtMoney(n){n=Number(n)||0;return "$"+n.toLocaleString("es-CL")}
+function addDays(iso,days){if(!iso)return"";const d=new Date(iso+"T00:00:00");if(isNaN(d))return"";d.setDate(d.getDate()+days);return d.toISOString().slice(0,10)}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className="toast show"+(err?" err":"");setTimeout(()=>t.className="toast"+(err?" err":""),2600)}
+
+/* ---------- navigation ---------- */
+document.querySelectorAll('nav button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById(b.dataset.view).classList.add('active');
+    renderAll();
+  };
+});
+
+/* =========================================================
+   COBRANZA
+   ========================================================= */
+function newCob(){
+  return {id:cid(), mes:"", anio:nowYear(), clienteId:"", cliente:"", rut:"",
+    monto:0,
+    prefEnv:false, prefFecha:"",
+    ocReq:true, ocRecibida:false, ocNum:"", ocFecha:"",
+    hesRecibida:false, hesNum:"", hesFecha:"",
+    facturaNum:"", facturaFecha:"", enviadaSII:false,
+    factorizada:false, entidad:"", factFecha:"",
+    estado:"Pendiente", nota:""};
+}
+
+function cobPipe(r){
+  const steps=[r.prefEnv, r.ocRecibida||!r.ocReq, r.hesRecibida, !!r.facturaNum, r.enviadaSII];
+  return steps;
+}
+
+function renderCob(){
+  const q=(document.getElementById('cbSearch').value||"").toLowerCase();
+  const fMes=document.getElementById('cbMes').value;
+  const fCli=document.getElementById('cbCli').value;
+  const fEst=document.getElementById('cbEst').value;
+  let rows=DB.cobranza.filter(r=>{
+    if(fMes && r.mes!==fMes) return false;
+    if(fCli && r.clienteId!==fCli && r.cliente!==fCli) return false;
+    if(fEst && r.estado!==fEst) return false;
+    if(q){
+      const blob=[r.cliente,r.rut,r.facturaNum,r.ocNum,r.hesNum,r.mes,r.entidad].join(" ").toLowerCase();
+      if(!blob.includes(q)) return false;
+    }
+    return true;
+  });
+  const t=document.getElementById('cbTable');
+  document.getElementById('cbCount').textContent=rows.length;
+  if(!rows.length){t.innerHTML=`<tbody><tr><td class="empty">${DB.cobranza.length?'Ningún registro coincide con el filtro.':'Sin registros aún. Usa <b>+ Agregar registro</b> o carga masiva desde <b>Importar</b>.'}</td></tr></tbody>`;return;}
+  t.innerHTML=`<thead><tr>
+    <th>Mes serv.</th><th>Año</th><th>Cliente</th><th>Monto</th>
+    <th>Prefactura</th><th>OC</th><th>HES/ROC</th><th>Factura</th><th>SII</th>
+    <th>Vence</th><th>Factoriz.</th><th>Estado</th><th>Avance</th><th></th>
+  </tr></thead><tbody>${rows.map(r=>cobRow(r)).join("")}</tbody>`;
+  bindCobEvents();
+}
+
+function cobRow(r){
+  const pipe=cobPipe(r);
+  const pipeHtml=`<div class="pipe" title="Prefactura · OC · HES · Factura · SII">${pipe.map(s=>`<span class="step ${s?'on':''}"></span>`).join("")}</div>`;
+  const cliOpts=DB.clientes.map(c=>`<option value="${c.id}" ${c.id===r.clienteId?'selected':''}>${esc(c.nombre)}</option>`).join("");
+  return `<tr data-id="${r.id}">
+    <td><select data-f="mes">${['<option value=""></option>'].concat(MESES.map(m=>`<option ${m===r.mes?'selected':''}>${m}</option>`)).join("")}</select></td>
+    <td><input data-f="anio" type="number" value="${esc(r.anio)}" style="width:64px"></td>
+    <td><select data-f="clienteId"><option value="">—</option>${cliOpts}</select></td>
+    <td class="num"><input data-f="monto" type="number" value="${esc(r.monto)}" style="text-align:right"></td>
+    <td class="center"><input class="chk" type="checkbox" data-f="prefEnv" ${r.prefEnv?'checked':''}><br><input data-f="prefFecha" type="date" value="${esc(r.prefFecha)}" style="width:120px"></td>
+    <td class="center"><input class="chk" type="checkbox" data-f="ocRecibida" ${r.ocRecibida?'checked':''}><br><input data-f="ocNum" placeholder="N° OC" value="${esc(r.ocNum)}" style="width:100px"></td>
+    <td class="center"><input class="chk" type="checkbox" data-f="hesRecibida" ${r.hesRecibida?'checked':''}><br><input data-f="hesNum" placeholder="N° HES" value="${esc(r.hesNum)}" style="width:100px"></td>
+    <td><input data-f="facturaNum" placeholder="N° Factura" value="${esc(r.facturaNum)}" style="width:100px"><br><input data-f="facturaFecha" type="date" value="${esc(r.facturaFecha)}" style="width:120px"></td>
+    <td class="center"><input class="chk" type="checkbox" data-f="enviadaSII" ${r.enviadaSII?'checked':''}></td>
+    <td style="color:var(--muted)">${esc(addDays(r.facturaFecha,30))}</td>
+    <td class="center"><input class="chk" type="checkbox" data-f="factorizada" ${r.factorizada?'checked':''}><br><input data-f="entidad" placeholder="Entidad" value="${esc(r.entidad)}" style="width:110px"></td>
+    <td><select data-f="estado" class="st-${stClass[r.estado]||'pend'}">${ESTADOS.map(e=>`<option ${e===r.estado?'selected':''}>${e}</option>`).join("")}</select></td>
+    <td>${pipeHtml}</td>
+    <td class="row-actions"><button class="btn ghost sm" data-act="dup">⧉</button><button class="btn danger sm" data-act="del">✕</button></td>
+  </tr>`;
+}
+
+function bindCobEvents(){
+  document.querySelectorAll('#cbTable tbody tr').forEach(tr=>{
+    const id=tr.dataset.id; const r=DB.cobranza.find(x=>x.id===id);
+    tr.querySelectorAll('[data-f]').forEach(inp=>{
+      inp.onchange=()=>{
+        const f=inp.dataset.f;
+        let v = inp.type==='checkbox'?inp.checked:(inp.type==='number'?Number(inp.value):inp.value);
+        r[f]=v;
+        if(f==='clienteId'){const c=DB.clientes.find(x=>x.id===v);r.cliente=c?c.nombre:"";r.rut=c?c.rut:"";}
+        if(f==='prefEnv' && v && !r.prefFecha){r.prefFecha=new Date().toISOString().slice(0,10);}
+        // auto-status suggestions
+        autoStatus(r,f,v);
+        save(); renderCob();
+      };
+    });
+    tr.querySelector('[data-act="del"]').onclick=()=>{ if(confirm("¿Eliminar este registro?")){DB.cobranza=DB.cobranza.filter(x=>x.id!==id);save();renderCob();renderDashboard();}};
+    tr.querySelector('[data-act="dup"]').onclick=()=>{const copy=JSON.parse(JSON.stringify(r));copy.id=cid();copy.facturaNum="";DB.cobranza.push(copy);save();renderCob();};
+  });
+}
+function autoStatus(r,f,v){
+  if(f==='factorizada' && v){r.estado="Factorizado";}
+  else if(f==='enviadaSII' && v && r.estado==='Pendiente'){r.estado="Facturado";}
+  else if(f==='facturaNum' && v && r.estado==='Pendiente'){r.estado="Facturado";}
+}
+
+/* =========================================================
+   TECNOLOGIA
+   ========================================================= */
+function newTec(){return {id:cid(),mes:"",anio:nowYear(),rut:"",cliente:"",cotizacion:"",facturaNum:"",ocNum:"",hesNum:"",monto:0,estado:"Pendiente"};}
+
+function renderTec(){
+  const q=(document.getElementById('tcSearch').value||"").toLowerCase();
+  const fEst=document.getElementById('tcEst').value;
+  let rows=DB.tecnologia.filter(r=>{
+    if(fEst && r.estado!==fEst) return false;
+    if(q){const blob=[r.cliente,r.rut,r.cotizacion,r.facturaNum,r.ocNum,r.mes].join(" ").toLowerCase();if(!blob.includes(q))return false;}
+    return true;
+  });
+  const t=document.getElementById('tcTable');
+  document.getElementById('tcCount').textContent=rows.length;
+  if(!rows.length){t.innerHTML=`<tbody><tr><td class="empty">${DB.tecnologia.length?'Ningún servicio coincide con el filtro.':'Sin servicios de tecnología. Usa <b>+ Agregar servicio</b> o carga masiva.'}</td></tr></tbody>`;return;}
+  t.innerHTML=`<thead><tr>
+    <th>Mes serv.</th><th>Año</th><th>RUT cliente</th><th>Cliente</th><th>N° Cotización</th>
+    <th>Factura</th><th>Orden de compra</th><th>HES</th><th>Monto</th><th>Estado</th><th></th>
+  </tr></thead><tbody>${rows.map(r=>`
+    <tr data-id="${r.id}">
+      <td><select data-f="mes">${['<option value=""></option>'].concat(MESES.map(m=>`<option ${m===r.mes?'selected':''}>${m}</option>`)).join("")}</select></td>
+      <td><input data-f="anio" type="number" value="${esc(r.anio)}" style="width:64px"></td>
+      <td><input data-f="rut" value="${esc(r.rut)}" style="width:110px"></td>
+      <td><input data-f="cliente" value="${esc(r.cliente)}" style="width:150px"></td>
+      <td><input data-f="cotizacion" value="${esc(r.cotizacion)}" style="width:110px"></td>
+      <td><input data-f="facturaNum" value="${esc(r.facturaNum)}" style="width:100px"></td>
+      <td><input data-f="ocNum" value="${esc(r.ocNum)}" style="width:110px"></td>
+      <td><input data-f="hesNum" value="${esc(r.hesNum)}" style="width:100px"></td>
+      <td class="num"><input data-f="monto" type="number" value="${esc(r.monto)}" style="text-align:right"></td>
+      <td><select data-f="estado" class="st-${stClass[r.estado]||'pend'}">${ESTADOS.map(e=>`<option ${e===r.estado?'selected':''}>${e}</option>`).join("")}</select></td>
+      <td class="row-actions"><button class="btn danger sm" data-act="del">✕</button></td>
+    </tr>`).join("")}</tbody>`;
+  document.querySelectorAll('#tcTable tbody tr').forEach(tr=>{
+    const id=tr.dataset.id;const r=DB.tecnologia.find(x=>x.id===id);
+    tr.querySelectorAll('[data-f]').forEach(inp=>{inp.onchange=()=>{const f=inp.dataset.f;r[f]=inp.type==='number'?Number(inp.value):inp.value;save();renderTec();};});
+    tr.querySelector('[data-act="del"]').onclick=()=>{if(confirm("¿Eliminar servicio?")){DB.tecnologia=DB.tecnologia.filter(x=>x.id!==id);save();renderTec();}};
+  });
+}
+
+/* =========================================================
+   CLIENTES
+   ========================================================= */
+function renderCli(){
+  const t=document.getElementById('clTable');
+  t.innerHTML=`<thead><tr><th>Cliente fijo</th><th>RUT</th><th>Registros cobranza</th><th></th></tr></thead>
+  <tbody>${DB.clientes.map(c=>{
+    const n=DB.cobranza.filter(r=>r.clienteId===c.id).length;
+    return `<tr data-id="${c.id}">
+      <td><input data-f="nombre" value="${esc(c.nombre)}" style="width:260px"></td>
+      <td><input data-f="rut" value="${esc(c.rut)}" style="width:140px"></td>
+      <td class="center">${n}</td>
+      <td class="row-actions"><button class="btn danger sm" data-act="del">✕</button></td>
+    </tr>`;}).join("")}</tbody>`;
+  document.querySelectorAll('#clTable tbody tr').forEach(tr=>{
+    const id=tr.dataset.id;const c=DB.clientes.find(x=>x.id===id);
+    tr.querySelectorAll('[data-f]').forEach(inp=>{inp.onchange=()=>{c[inp.dataset.f]=inp.value;
+      // propagate name/rut to cobranza rows
+      DB.cobranza.forEach(r=>{if(r.clienteId===id){r.cliente=c.nombre;r.rut=c.rut;}});
+      save();renderCli();};});
+    tr.querySelector('[data-act="del"]').onclick=()=>{if(confirm("¿Eliminar cliente? (No borra sus registros)")){DB.clientes=DB.clientes.filter(x=>x.id!==id);save();renderCli();refreshSelectors();}};
+  });
+}
+
+/* =========================================================
+   DASHBOARD
+   ========================================================= */
+function renderDashboard(){
+  const all=DB.cobranza;
+  const by=e=>all.filter(r=>r.estado===e);
+  const sum=arr=>arr.reduce((a,r)=>a+(Number(r.monto)||0),0);
+  const kpis=[
+    {k:"Registros de cobranza",v:all.length,m:MESES.length+" meses posibles",cls:"accent"},
+    {k:"Pendientes",v:by("Pendiente").length,m:fmtMoney(sum(by("Pendiente")))},
+    {k:"Facturados",v:by("Facturado").length,m:fmtMoney(sum(by("Facturado")))},
+    {k:"Cobrados",v:by("Cobrado").length,m:fmtMoney(sum(by("Cobrado")))},
+    {k:"Factorizados",v:by("Factorizado").length,m:fmtMoney(sum(by("Factorizado")))},
+    {k:"Monto total",v:fmtMoney(sum(all)),m:"Suma de todos los registros"},
+  ];
+  document.getElementById('kpis').innerHTML=kpis.map(c=>`<div class="card ${c.cls||''}"><div class="k">${c.k}</div><div class="v">${c.v}</div><div class="m">${c.m}</div></div>`).join("");
+
+  // montos por estado
+  document.getElementById('montoCards').innerHTML=ESTADOS.map(e=>{
+    const arr=by(e);
+    return `<div class="card"><div class="k"><span class="pill ${stClass[e]}">${e}</span></div><div class="v">${fmtMoney(sum(arr))}</div><div class="m">${arr.length} factura(s)</div></div>`;
+  }).join("");
+
+  // factorizadas por entidad
+  const fz=all.filter(r=>r.factorizada||r.estado==="Factorizado");
+  const byEnt={};
+  fz.forEach(r=>{const e=(r.entidad||"Sin especificar");byEnt[e]=byEnt[e]||{n:0,m:0};byEnt[e].n++;byEnt[e].m+=Number(r.monto)||0;});
+  const fbox=document.getElementById('factzBox');
+  const ents=Object.keys(byEnt);
+  fbox.innerHTML= ents.length? `<div class="cards">${ents.map(e=>`<div class="card"><div class="k">🏦 ${esc(e)}</div><div class="v">${byEnt[e].n}</div><div class="m">${fmtMoney(byEnt[e].m)}</div></div>`).join("")}</div>` : '<div class="empty">Aún no hay facturas factorizadas.</div>';
+
+  renderMatrix();
+}
+
+function renderMatrix(){
+  // year selector
+  const years=[...new Set(DB.cobranza.map(r=>Number(r.anio)).filter(Boolean))];
+  if(!years.length) years.push(nowYear());
+  const sel=document.getElementById('matYearSel');
+  const cur=sel.value||Math.max(...years);
+  sel.innerHTML=years.sort().map(y=>`<option ${y==cur?'selected':''}>${y}</option>`).join("");
+  document.getElementById('matYear').textContent="Año "+cur;
+  const year=Number(sel.value||cur);
+
+  const clientes=DB.clientes.slice();
+  // include clients that appear in data but not in list
+  DB.cobranza.forEach(r=>{if(r.cliente && !clientes.find(c=>c.id===r.clienteId||c.nombre===r.cliente))clientes.push({id:r.clienteId||r.cliente,nombre:r.cliente,rut:r.rut});});
+
+  const tbl=document.getElementById('matrixTbl');
+  const priority={Pendiente:1,Facturado:2,Factorizado:3,Cobrado:4};
+  let head=`<thead><tr><th class="cli">Cliente</th>${MESES.map(m=>`<th>${m.slice(0,3)}</th>`).join("")}</tr></thead>`;
+  let body=clientes.map(c=>{
+    const cells=MESES.map(m=>{
+      const recs=DB.cobranza.filter(r=>Number(r.anio)===year && r.mes===m && (r.clienteId===c.id||r.cliente===c.nombre));
+      if(!recs.length) return `<td><span class="cell none">·</span></td>`;
+      // pick "dominant" status = the least advanced (worst) to highlight what's pending
+      let best=recs[0].estado;
+      recs.forEach(r=>{if((priority[r.estado]||1)<(priority[best]||1))best=r.estado;});
+      const label={Pendiente:"PEND",Facturado:"FACT",Cobrado:"OK",Factorizado:"FZ"}[best]||"";
+      return `<td title="${esc(c.nombre)} · ${m}: ${recs.length} registro(s)"><span class="cell ${stClass[best]}">${label}</span></td>`;
+    }).join("");
+    return `<tr><td class="cli">${esc(c.nombre)}</td>${cells}</tr>`;
+  }).join("");
+  if(!clientes.length) body=`<tr><td class="cli">—</td>${MESES.map(()=>'<td><span class="cell none">·</span></td>').join("")}</tr>`;
+  tbl.innerHTML=head+"<tbody>"+body+"</tbody>";
+  sel.onchange=renderMatrix;
+}
+
+/* =========================================================
+   SELECTORS / FILTERS
+   ========================================================= */
+function refreshSelectors(){
+  const mesSel=document.getElementById('cbMes');
+  mesSel.innerHTML='<option value="">Todos</option>'+MESES.map(m=>`<option>${m}</option>`).join("");
+  const cliSel=document.getElementById('cbCli');
+  cliSel.innerHTML='<option value="">Todos</option>'+DB.clientes.map(c=>`<option value="${c.id}">${esc(c.nombre)}</option>`).join("");
+}
+
+/* =========================================================
+   MODAL (add record)
+   ========================================================= */
+function openCobModal(){
+  const r=newCob();
+  const cliOpts=DB.clientes.map(c=>`<option value="${c.id}">${esc(c.nombre)}</option>`).join("");
+  document.getElementById('modalBox').innerHTML=`
+    <h3>🧾 Nuevo registro de cobranza</h3>
+    <div class="grid2">
+      <label class="fld">Mes de servicio<select id="m_mes"><option value=""></option>${MESES.map(m=>`<option>${m}</option>`).join("")}</select></label>
+      <label class="fld">Año<input id="m_anio" type="number" value="${nowYear()}"></label>
+      <label class="fld full">Cliente<select id="m_cli"><option value="">—</option>${cliOpts}</select></label>
+      <label class="fld">Monto<input id="m_monto" type="number" value="0"></label>
+      <label class="fld">N° Factura<input id="m_fact"></label>
+      <label class="fld">N° OC<input id="m_oc"></label>
+      <label class="fld">N° HES/ROC<input id="m_hes"></label>
+      <label class="fld full">Estado<select id="m_est">${ESTADOS.map(e=>`<option>${e}</option>`).join("")}</select></label>
+    </div>
+    <div class="modal-actions">
+      <button class="btn ghost" onclick="closeModal()">Cancelar</button>
+      <button class="btn" id="m_save">Guardar</button>
+    </div>`;
+  showModal();
+  document.getElementById('m_save').onclick=()=>{
+    r.mes=val('m_mes');r.anio=Number(val('m_anio'));
+    const cliId=val('m_cli');const c=DB.clientes.find(x=>x.id===cliId);
+    r.clienteId=cliId;r.cliente=c?c.nombre:"";r.rut=c?c.rut:"";
+    r.monto=Number(val('m_monto'));r.facturaNum=val('m_fact');r.ocNum=val('m_oc');r.hesNum=val('m_hes');r.estado=val('m_est');
+    DB.cobranza.unshift(r);save();closeModal();renderCob();renderDashboard();toast("Registro agregado");
+  };
+}
+function val(id){return document.getElementById(id).value}
+function showModal(){document.getElementById('modalBg').classList.add('show')}
+function closeModal(){document.getElementById('modalBg').classList.remove('show')}
+document.getElementById('modalBg').onclick=e=>{if(e.target.id==='modalBg')closeModal()};
+
+/* =========================================================
+   IMPORT / EXPORT (SheetJS)
+   ========================================================= */
+const COB_COLS=[
+  ["Mes servicio","mes"],["Año","anio"],["Cliente","cliente"],["RUT","rut"],["Monto","monto"],
+  ["Prefactura enviada (SI/NO)","prefEnv"],["Fecha prefactura","prefFecha"],
+  ["OC recibida (SI/NO)","ocRecibida"],["N° OC","ocNum"],["Fecha OC","ocFecha"],
+  ["HES recibida (SI/NO)","hesRecibida"],["N° HES/ROC","hesNum"],["Fecha HES","hesFecha"],
+  ["N° Factura","facturaNum"],["Fecha factura","facturaFecha"],["Enviada SII (SI/NO)","enviadaSII"],
+  ["Factorizada (SI/NO)","factorizada"],["Entidad financiera","entidad"],["Fecha factorización","factFecha"],
+  ["Estado","estado"],["Nota","nota"]
+];
+const TEC_COLS=[
+  ["Mes servicio","mes"],["Año","anio"],["RUT cliente","rut"],["Cliente","cliente"],
+  ["N° Cotización","cotizacion"],["Factura","facturaNum"],["Orden de compra","ocNum"],["HES","hesNum"],
+  ["Monto","monto"],["Estado","estado"]
+];
+function boolFrom(v){if(typeof v==='boolean')return v;const s=String(v||"").trim().toLowerCase();return ["si","sí","x","1","true","verdadero","yes"].includes(s);}
+function boolTo(b){return b?"SI":"NO"}
+
+function ensureXLSX(cb){
+  if(window.XLSX)return cb();
+  toast("Cargando módulo Excel...");
+  const s=document.createElement('script');
+  s.src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js";
+  s.onload=cb; s.onerror=()=>toast("No se pudo cargar el módulo Excel (revisa tu conexión)",true);
+  document.head.appendChild(s);
+}
+
+function downloadTemplate(kind){
+  ensureXLSX(()=>{
+    const cols=(kind==='cob'?COB_COLS:TEC_COLS).map(c=>c[0]);
+    const example=kind==='cob'
+      ? {"Mes servicio":"Enero","Año":nowYear(),"Cliente":"Supermercado Ejemplo","RUT":"76.111.111-1","Monto":1500000,"Prefactura enviada (SI/NO)":"SI","Fecha prefactura":"2026-02-05","OC recibida (SI/NO)":"SI","N° OC":"OC-1234","Fecha OC":"2026-02-08","HES recibida (SI/NO)":"SI","N° HES/ROC":"HES-9988","Fecha HES":"2026-02-10","N° Factura":"F-0001","Fecha factura":"2026-02-11","Enviada SII (SI/NO)":"SI","Factorizada (SI/NO)":"NO","Entidad financiera":"","Fecha factorización":"","Estado":"Facturado","Nota":""}
+      : {"Mes servicio":"Enero","Año":nowYear(),"RUT cliente":"76.111.111-1","Cliente":"Cliente Ejemplo","N° Cotización":"COT-100","Factura":"F-2001","Orden de compra":"OC-55","HES":"HES-7","Monto":800000,"Estado":"Pendiente"};
+    const ws=XLSX.utils.json_to_sheet([example],{header:cols});
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,kind==='cob'?"Cobranza":"Tecnologia");
+    XLSX.writeFile(wb, kind==='cob'?"Plantilla_Cobranza.xlsx":"Plantilla_Tecnologia.xlsx");
+  });
+}
+
+function importFile(file){
+  ensureXLSX(()=>{
+    const target=document.getElementById('impTarget').value;
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const wb=XLSX.read(e.target.result,{type:'array'});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{defval:""});
+        let added=0,updated=0;
+        rows.forEach(row=>{
+          if(target==='cobranza'){
+            const rec=newCob();
+            COB_COLS.forEach(([label,key])=>{
+              if(!(label in row))return;
+              let v=row[label];
+              if(["prefEnv","ocRecibida","hesRecibida","enviadaSII","factorizada"].includes(key)) v=boolFrom(v);
+              else if(["monto","anio"].includes(key)) v=Number(v)||0;
+              rec[key]=v;
+            });
+            // link client
+            const c=DB.clientes.find(x=>x.nombre.toLowerCase()===String(rec.cliente).toLowerCase());
+            if(c){rec.clienteId=c.id;rec.rut=rec.rut||c.rut;}
+            else if(rec.cliente){DB.clientes.push({id:cid(),nombre:rec.cliente,rut:rec.rut||""});rec.clienteId=DB.clientes[DB.clientes.length-1].id;}
+            if(!rec.estado)rec.estado="Pendiente";
+            // update by factura number if exists
+            const ex=rec.facturaNum && DB.cobranza.find(x=>x.facturaNum&&x.facturaNum===rec.facturaNum);
+            if(ex){Object.assign(ex,rec,{id:ex.id});updated++;}else{DB.cobranza.push(rec);added++;}
+          }else{
+            const rec=newTec();
+            TEC_COLS.forEach(([label,key])=>{if(!(label in row))return;let v=row[label];if(["monto","anio"].includes(key))v=Number(v)||0;rec[key]=v;});
+            if(!rec.estado)rec.estado="Pendiente";
+            const ex=rec.facturaNum && DB.tecnologia.find(x=>x.facturaNum&&x.facturaNum===rec.facturaNum);
+            if(ex){Object.assign(ex,rec,{id:ex.id});updated++;}else{DB.tecnologia.push(rec);added++;}
+          }
+        });
+        save();refreshSelectors();renderAll();
+        document.getElementById('impResult').innerHTML=`<div class="hint">✅ Importación completa: <b>${added}</b> agregados, <b>${updated}</b> actualizados (de ${rows.length} filas).</div>`;
+        toast("Datos importados");
+      }catch(err){document.getElementById('impResult').innerHTML=`<div class="hint" style="border-color:var(--danger);color:#fca5a5">❌ Error al leer el archivo: ${esc(err.message)}</div>`;toast("Error al importar",true);}
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function exportAll(){
+  ensureXLSX(()=>{
+    const wb=XLSX.utils.book_new();
+    const cob=DB.cobranza.map(r=>{const o={};COB_COLS.forEach(([label,key])=>{let v=r[key];if(["prefEnv","ocRecibida","hesRecibida","enviadaSII","factorizada"].includes(key))v=boolTo(v);o[label]=v;});o["Vencimiento (+30d)"]=addDays(r.facturaFecha,30);return o;});
+    const tec=DB.tecnologia.map(r=>{const o={};TEC_COLS.forEach(([label,key])=>o[label]=r[key]);return o;});
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(cob.length?cob:[{}]),"Cobranza");
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(tec.length?tec:[{}]),"Tecnologia");
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(DB.clientes.map(c=>({Cliente:c.nombre,RUT:c.rut}))),"Clientes");
+    XLSX.writeFile(wb,"Cobranza_Cocuyo_"+new Date().toISOString().slice(0,10)+".xlsx");
+    toast("Excel generado");
+  });
+}
+
+/* =========================================================
+   RENDER ALL + BINDINGS
+   ========================================================= */
+function renderAll(){renderDashboard();renderCob();renderTec();renderCli();}
+
+// filters
+['cbSearch','cbMes','cbCli','cbEst'].forEach(id=>document.getElementById(id).addEventListener('input',renderCob));
+['tcSearch','tcEst'].forEach(id=>document.getElementById(id).addEventListener('input',renderTec));
+
+document.getElementById('cbAdd').onclick=openCobModal;
+document.getElementById('tcAdd').onclick=()=>{DB.tecnologia.unshift(newTec());save();renderTec();};
+document.getElementById('clAdd').onclick=()=>{DB.clientes.push({id:cid(),nombre:"Nuevo cliente",rut:""});save();renderCli();refreshSelectors();};
+
+document.getElementById('tplCob').onclick=()=>downloadTemplate('cob');
+document.getElementById('tplTec').onclick=()=>downloadTemplate('tec');
+document.getElementById('expXlsx').onclick=exportAll;
+document.getElementById('expJson').onclick=()=>{const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download="cobranza_backup.json";a.click();};
+
+const drop=document.getElementById('drop'),fileInp=document.getElementById('fileInp');
+drop.onclick=()=>fileInp.click();
+fileInp.onchange=e=>{if(e.target.files[0])importFile(e.target.files[0]);};
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag')};
+drop.ondragleave=()=>drop.classList.remove('drag');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');if(e.dataTransfer.files[0])importFile(e.dataTransfer.files[0]);};
+
+document.getElementById('restoreInp').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{DB=JSON.parse(ev.target.result);save();refreshSelectors();renderAll();toast("Copia restaurada");}catch(err){toast("Archivo inválido",true);}};r.readAsText(f);};
+document.getElementById('wipe').onclick=()=>{if(confirm("¿Borrar TODOS los datos de este navegador? Esta acción no se puede deshacer.")){localStorage.removeItem(LS_KEY);DB=JSON.parse(JSON.stringify(SEED));DB.clientes=[];save();refreshSelectors();renderAll();toast("Datos borrados");}};
+
+// init
+refreshSelectors();
+renderAll();
+</script>
+</body>
+</html>
