@@ -1190,6 +1190,17 @@ function resetToDefault(){
   state.entidades=DEFAULT_ENTIDADES();
   sortPeriods(); saveLocal(); renderAll(); toast('Datos restablecidos al ejemplo.', 'ok');
 }
+/* Borrar TODO para empezar de cero (con confirmación escribiendo BORRAR) */
+function wipeAll(){
+  var typed = prompt('⚠ ATENCIÓN: esto eliminará TODOS los datos para empezar de cero:\n\n• Clientes / servicios\n• Registros de facturación\n• Servicios de tecnología\n• Periodos\n\n(Se conservan las entidades financieras registradas.)\n\nTe recomiendo usar "Exportar respaldo" antes.\n\nEscribe la palabra BORRAR para confirmar:');
+  if(typed===null) return false;
+  if(String(typed).trim().toUpperCase() !== 'BORRAR'){ toast('Cancelado: no se borró nada.', 'err'); return false; }
+  state.clients=[]; state.records={}; state.periods=[]; state.tech=[];
+  filters={ cliente:'', periodo:'', estado:'', buscar:'' };
+  var fb=document.getElementById('fBuscar'); if(fb) fb.value='';
+  saveLocal(); renderAll(); toast('Todo borrado. Ya puedes cargar tus datos desde cero.', 'ok');
+  return true;
+}
 var saveToFileDebounced = debounce(function(){ saveToConnectedFile(); }, 500);
 async function saveToConnectedFile(){
   if(!fileHandle) return;
@@ -1634,12 +1645,13 @@ function renderImportModal(){
       '<div class="imp-note"><b>💡 Montos automáticos:</b> basta con llenar el <b>Neto</b> — el IVA (19%) y el Total se calculan solos al importar. Reconoce: Cliente, Servicio, RUT, Periodo/Mes, N° Factura, Fecha, Neto, IVA, Total, Orden de Compra, HES, Estado, Entidad, Glosa. <b>Segunda factura (anticipo/saldo):</b> agrega columnas <i>Tipo 2, N° Factura 2, Neto 2, Estado 2, Entidad 2</i>. Se crea o actualiza por cliente+periodo.</div>' +
       '<div class="imp-result" id="impResultBox"></div>' +
     '</div>' +
-    '<div class="modal-foot"><button class="btn btn-ghost btn-danger-text" id="btnResetDatos">↺ Restablecer a datos de ejemplo</button><button class="btn btn-primary" id="btnCloseImport2">Listo</button></div>';
+    '<div class="modal-foot"><div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="btn btn-ghost btn-danger-text" id="btnResetDatos">↺ Restablecer a datos de ejemplo</button><button class="btn btn-ghost btn-danger-text" id="btnWipeAll">🗑 Borrar todo (empezar de cero)</button></div><button class="btn btn-primary" id="btnCloseImport2">Listo</button></div>';
 
   function destino(){ var r=modal.querySelector('input[name="impDest"]:checked'); return r?r.value:'cobranza'; }
   document.getElementById('btnCloseImport').onclick = closeImportModal;
   document.getElementById('btnCloseImport2').onclick = closeImportModal;
   document.getElementById('btnResetDatos').onclick = function(){ resetToDefault(); closeImportModal(); };
+  document.getElementById('btnWipeAll').onclick = function(){ if(wipeAll()) closeImportModal(); };
   document.getElementById('btnTplCob').onclick = function(){ downloadTemplate('cobranza'); };
   document.getElementById('btnTplTec').onclick = function(){ downloadTemplate('tecnologia'); };
   var drop = document.getElementById('dropZone');
