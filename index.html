@@ -2164,6 +2164,8 @@ function renderRecordModal(){
         '<div class="adj-form" style="margin-bottom:10px;">' +
           '<div class="fgroup"><label>Archivo (PDF o imagen)</label><input type="file" id="rec_adjFile" accept=".pdf,image/*"></div>' +
           '<div class="fgroup"><label>Tipo</label><select id="rec_adjCat"><option value="factura">Factura</option><option value="oc">Orden de compra</option><option value="hes">HES / ROC</option><option value="otro">Otro</option></select></div>' +
+          '<div class="fgroup"><label>N° de referencia</label><input type="text" id="rec_adjRef" list="rec_adjRefList" value="'+esc(rec.factura.numero||'')+'" placeholder="N° factura"><datalist id="rec_adjRefList">'+(rec.factura.numero?('<option value="'+esc(rec.factura.numero)+'"></option>'):'')+((rec.factura2&&rec.factura2.numero)?('<option value="'+esc(rec.factura2.numero)+'"></option>'):'')+(rec.oc&&rec.oc.numero?('<option value="'+esc(rec.oc.numero)+'"></option>'):'')+'</datalist></div>' +
+          '<div class="fgroup"><label>Cliente</label><input type="text" id="rec_adjCliente" value="'+esc(client?client.cliente:'')+'"></div>' +
           '<div class="fgroup" style="flex:1;min-width:160px;"><label>Nota (opcional)</label><input type="text" id="rec_adjNota" placeholder="Descripción…"></div>' +
           '<div class="fgroup" style="align-self:flex-end;"><button class="btn btn-primary" id="rec_btnAdj">Adjuntar</button></div>' +
         '</div>' +
@@ -2851,7 +2853,10 @@ async function subirAdjuntoRegistro(){
   if(f.size > ADJ_MAX){ toast('El archivo pesa ' + fmtSize(f.size) + '. El máximo es 700 KB — comprímelo o escanéalo en menor resolución.', 'err'); return; }
   var cat = document.getElementById('rec_adjCat').value;
   var nota = document.getElementById('rec_adjNota').value.trim();
-  var ref = rec.factura.numero || rec.oc.numero || rec.hes.numero || '';
+  var refEl = document.getElementById('rec_adjRef');
+  var ref = refEl ? refEl.value.trim() : (rec.factura.numero || rec.oc.numero || rec.hes.numero || '');
+  var cliEl = document.getElementById('rec_adjCliente');
+  var cliNombre = cliEl ? cliEl.value.trim() : (client.cliente||'');
   var btn = document.getElementById('rec_btnAdj'); btn.disabled = true; btn.textContent = 'Subiendo…';
   try{
     var dataUrl = await readFileAsDataURL(f);
@@ -2861,7 +2866,7 @@ async function subirAdjuntoRegistro(){
       data: base64, name: f.name, mime: f.type || 'application/octet-stream',
       at: new Date().toISOString(), uploadedBy: cloud.user.email
     });
-    state.adjuntos.push({ id:id, cat:cat, ref:ref, cliente:client.cliente||'', nota:nota, name:f.name, mime:f.type||'', size:f.size, at:new Date().toISOString(), recordKey:editingRecordKey, periodo:rec.periodo });
+    state.adjuntos.push({ id:id, cat:cat, ref:ref, cliente:cliNombre, nota:nota, name:f.name, mime:f.type||'', size:f.size, at:new Date().toISOString(), recordKey:editingRecordKey, periodo:rec.periodo });
     saveLocal();
     fileInput.value = ''; document.getElementById('rec_adjNota').value = '';
     renderRecordAdjuntos(); renderRespaldos();
