@@ -458,6 +458,7 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
   <div class="tab-panel active" id="tab-dashboard">
     <div class="dash-section" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
       <strong style="font-size:13px;margin-right:6px;">⬇ Descargar informes (Excel):</strong>
+      <button class="btn btn-sm" id="btnRepConsol">Consolidado mensual (Cobranza + Tec)</button>
       <button class="btn btn-sm" id="btnRepMensual">Resumen mensual por cliente</button>
       <button class="btn btn-sm" id="btnRepFactorizado">Todo lo factorizado</button>
       <button class="btn btn-sm" id="btnRepDetalle">Detalle de facturación</button>
@@ -2409,6 +2410,40 @@ function exportResumenMensualXlsx(){
   saveWb(wb, 'resumen-mensual-por-cliente.xlsx');
 }
 
+/* Informe: consolidado mensual sumando Cobranza + Tecnología */
+function exportConsolidadoMensualXlsx(){
+  if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
+  function blank(){ return {facCob:0, facTec:0, cobrado:0, factorizado:0, pendiente:0, vencido:0}; }
+  var byP = {};
+  state.periods.forEach(function(p){ byP[p]=blank(); });
+  // Cobranza
+  Object.keys(state.records).forEach(function(k){
+    var r=state.records[k]; var c=getClient(r.clientId); if(!c) return;
+    if(!byP[r.periodo]) byP[r.periodo]=blank();
+    invoiceLines(r).forEach(function(l){ if(!l.emitida) return; var m=byP[r.periodo]; m.facCob+=l.total; var b=lineBucket(l);
+      if(b==='pagado') m.cobrado+=l.total; else if(b==='factorizado') m.factorizado+=l.total;
+      else if(b==='vencido'){ m.vencido+=l.total; m.pendiente+=l.total; } else if(b==='facturado') m.pendiente+=l.total; });
+  });
+  // Tecnología
+  state.tech.forEach(function(t){ if(!byP[t.periodo]) byP[t.periodo]=blank(); var l=techLine(t); if(!l.emitida) return; var m=byP[t.periodo]; m.facTec+=l.total; var b=lineBucket(l);
+    if(b==='pagado') m.cobrado+=l.total; else if(b==='factorizado') m.factorizado+=l.total;
+    else if(b==='vencido'){ m.vencido+=l.total; m.pendiente+=l.total; } else if(b==='facturado') m.pendiente+=l.total; });
+
+  var periods = Object.keys(byP).filter(function(p){return p;}).sort();
+  if(!periods.length){ toast('No hay periodos para exportar.', 'err'); return; }
+  var tot = blank();
+  var rows = periods.map(function(p){ var m=byP[p];
+    tot.facCob+=m.facCob; tot.facTec+=m.facTec; tot.cobrado+=m.cobrado; tot.factorizado+=m.factorizado; tot.pendiente+=m.pendiente; tot.vencido+=m.vencido;
+    return { 'Mes':fmtPeriodo(p), 'Facturado Cobranza':m.facCob, 'Facturado Tecnología':m.facTec, 'Total Facturado':m.facCob+m.facTec,
+      'Cobrado':m.cobrado, 'Factorizado':m.factorizado, 'Pendiente por cobrar':m.pendiente, 'Vencido':m.vencido };
+  });
+  rows.push({ 'Mes':'TOTAL', 'Facturado Cobranza':tot.facCob, 'Facturado Tecnología':tot.facTec, 'Total Facturado':tot.facCob+tot.facTec,
+    'Cobrado':tot.cobrado, 'Factorizado':tot.factorizado, 'Pendiente por cobrar':tot.pendiente, 'Vencido':tot.vencido });
+  var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Consolidado mensual');
+  saveWb(wb, 'consolidado-mensual.xlsx');
+}
+
 /* ---------- Render general ---------- */
 function renderAll(){ renderFilterOptions(); renderKPIs(); renderTable(); renderMatrix(); renderTech(); renderClientes(); renderEntidades(); renderDashboard(); }
 function switchTab(tab){
@@ -2434,6 +2469,7 @@ function initEvents(){
   document.getElementById('btnAddEntidad').addEventListener('click', addEntidad);
   document.getElementById('nuevaEntidadRazon').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addEntidad(); } });
   document.getElementById('nuevaEntidadRut').addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); addEntidad(); } });
+  document.getElementById('btnRepConsol').addEventListener('click', exportConsolidadoMensualXlsx);
   document.getElementById('btnRepMensual').addEventListener('click', exportResumenMensualXlsx);
   document.getElementById('btnRepFactorizado').addEventListener('click', exportFactorizadoXlsx);
   document.getElementById('btnRepDetalle').addEventListener('click', exportDetalleXlsx);
