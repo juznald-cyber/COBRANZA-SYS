@@ -1123,7 +1123,8 @@ var STATUS_DEFS = {
   vencido:           {label:'Vencido',                    css:'b-red',    color:'var(--red)'},
   factorizado:       {label:'Factorizado',                css:'b-purple', color:'var(--purple)'},
   pagado:            {label:'Pagado',                     css:'b-green',  color:'var(--green)'},
-  cubierta:          {label:'Facturado en otra factura',  css:'b-teal',   color:'#1F9E93'}
+  cubierta:          {label:'Facturado en otra factura',  css:'b-teal',   color:'#1F9E93'},
+  anulada:           {label:'Anulada',                    css:'b-gray',   color:'var(--slate-soft)'}
 };
 
 var CHECKPOINT_STEPS = [
@@ -1406,15 +1407,25 @@ function techLine(t){
 function techStatusKey(t){
   if(t.estado==='anulada') return 'anulada';
   var b = lineBucket(techLine(t)); // pagado / factorizado / facturado / vencido / otro
-  return (b==='otro') ? 'sin_prefactura' : b;
+  return (b==='otro') ? 'listo_facturar' : b;
+}
+/* Badge de estado unificado: mismas etiquetas y colores que el módulo de Registro */
+function techBadge(t){
+  var key = techStatusKey(t);
+  var sd = STATUS_DEFS[key];
+  return sd ? { label: sd.label, css: sd.css } : { label: '—', css: 'b-gray' };
 }
 
 function filteredTech(){
   var q = (filters.buscar||'').toLowerCase();
-  var cliNombre = filters.cliente ? ((getClient(filters.cliente)||{}).cliente||'') : '';
+  var cli = filters.cliente ? getClient(filters.cliente) : null;
   return state.tech.slice().filter(function(t){
     if(filters.periodo && t.periodo !== filters.periodo) return false;
-    if(cliNombre && normTextU(t.cliente)!==normTextU(cliNombre)) return false;
+    if(cli){
+      var nameMatch = normTextU(t.cliente) === normTextU(cli.cliente||'');
+      var rutMatch = cli.rut && t.rut && cli.rut.replace(/[.\-\s]/g,'').toUpperCase() === t.rut.replace(/[.\-\s]/g,'').toUpperCase();
+      if(!nameMatch && !rutMatch) return false;
+    }
     if(filters.estado && techStatusKey(t)!==filters.estado) return false;
     if(q){
       var hay = [t.cliente,t.rut,t.cotizacion,t.factura,t.oc,t.hes].join(' ').toLowerCase();
@@ -1452,7 +1463,7 @@ function renderTech(){
   if(list.length===0){ body.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
   body.innerHTML = list.map(function(t){
-    var sd = TECH_STATUS[t.estado] || TECH_STATUS.pendiente;
+    var sd = techBadge(t);
     return '<tr data-id="'+t.id+'">' +
       '<td>'+fmtPeriodo(t.periodo)+'</td>' +
       '<td class="cliente-cell"><strong>'+esc(t.cliente||'—')+'</strong><span>'+esc(t.rut||'')+'</span></td>' +
@@ -2614,7 +2625,7 @@ function exportTechXlsx(){
       'Fecha factura': t.fechaFactura||'', 'Vencimiento': t.fechaVencimiento||'',
       'Orden de Compra': t.oc||'', 'HES': t.hes||'',
       'Neto': t.neto||0, 'IVA': t.iva||0, 'Total': t.total||0,
-      'Estado': (TECH_STATUS[t.estado]||TECH_STATUS.pendiente).label,
+      'Estado': techBadge(t).label,
       'Entidad factoring': t.entidad||'', 'RUT entidad': (entidadByName(t.entidad)?entidadByName(t.entidad).rut:''),
       'Notas': t.notas||''
     };
