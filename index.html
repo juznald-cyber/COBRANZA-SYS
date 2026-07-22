@@ -2746,7 +2746,13 @@ function authErrorMsg(ex){
   if(c === 'auth/weak-password' || c === 'auth/password-does-not-meet-requirements') return 'La contraseña debe tener al menos 6 caracteres.';
   if(c === 'auth/missing-password') return 'Ingresa una contraseña.';
   if(c === 'auth/missing-email') return 'Ingresa el correo.';
-  return 'No se pudo completar la acción. Inténtalo de nuevo.';
+  if(c === 'auth/configuration-not-found')
+    return 'Falta activar la autenticación en Firebase: entra a Authentication → Sign-in method → habilita "Correo electrónico/contraseña".';
+  if(c === 'auth/invalid-api-key' || c === 'auth/api-key-not-valid' || c === 'auth/api-key-not-valid.-please-pass-a-valid-api-key.')
+    return 'La configuración de Firebase no es válida (apiKey). Revisa los datos del proyecto.';
+  if(c === 'auth/unauthorized-domain')
+    return 'Este dominio no está autorizado en Firebase (Authentication → Settings → Authorized domains).';
+  return 'No se pudo completar la acción' + (c ? ' (' + c + ')' : '') + '.';
 }
 
 /* Mostrar / ocultar contraseña */
