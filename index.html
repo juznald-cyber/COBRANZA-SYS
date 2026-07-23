@@ -527,7 +527,7 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
     </div>
     <div class="fgroup" style="flex:1;">
       <label>Buscar</label>
-      <input type="search" class="search" id="fBuscar" placeholder="Cliente, N° factura, RUT, entidad de factoring…">
+      <input type="search" class="search" id="fBuscar" placeholder="Cliente, N° factura, RUT, entidad, OC, HES o monto…">
     </div>
     <div class="fgroup" style="align-self:flex-end;">
       <button class="btn btn-ghost btn-sm" id="btnClearFilters">Limpiar filtros</button>
@@ -1437,8 +1437,7 @@ function filteredTech(){
     }
     if(filters.estado && techStatusKey(t)!==filters.estado) return false;
     if(q){
-      var hay = [t.cliente,t.rut,t.cotizacion,t.factura,t.oc,t.hes].join(' ').toLowerCase();
-      if(hay.indexOf(q)===-1) return false;
+      if(!buscarMatch(filters.buscar, [t.cliente,t.rut,t.cotizacion,t.factura,t.oc,t.hes], [t.neto,t.total])) return false;
     }
     return true;
   }).sort(function(a,b){ return (b.periodo||'').localeCompare(a.periodo||''); });
@@ -1893,14 +1892,28 @@ function allRecordsList(){
   });
   return out;
 }
+/* Coincidencia de búsqueda: texto libre + montos (ignora puntos, $ y espacios) */
+function buscarMatch(q, textParts, amounts){
+  q = String(q||'').toLowerCase().trim();
+  if(!q) return true;
+  if(textParts.join(' ').toLowerCase().indexOf(q) !== -1) return true;
+  var qNum = q.replace(/[^\d]/g,'');
+  if(qNum.length >= 3 && amounts){
+    for(var i=0;i<amounts.length;i++){ if(String(amounts[i]||0).indexOf(qNum) !== -1) return true; }
+  }
+  return false;
+}
 function passesFilters(item){
   if(filters.cliente && item.client.id !== filters.cliente) return false;
   if(filters.periodo && item.rec.periodo !== filters.periodo) return false;
   if(filters.estado && item.status !== filters.estado) return false;
   if(filters.buscar){
-    var q = filters.buscar.toLowerCase();
-    var hay = [item.client.cliente, item.client.servicio, item.client.rut, item.rec.factura.numero, item.rec.factoring.entidad, item.rec.oc.numero, item.rec.hes.numero].join(' ').toLowerCase();
-    if(hay.indexOf(q) === -1) return false;
+    var s = segFactura(item.rec);
+    var txt = [item.client.cliente, item.client.servicio, item.client.rut,
+               item.rec.factura.numero, item.rec.factoring.entidad, item.rec.oc.numero, item.rec.hes.numero,
+               s?s.numero:'', s?s.oc:'', s?s.hes:'', s?s.entidad:''];
+    var amt = [item.rec.factura.neto, item.rec.factura.total, s?s.neto:0, s?s.total:0];
+    if(!buscarMatch(filters.buscar, txt, amt)) return false;
   }
   return true;
 }
@@ -1985,7 +1998,7 @@ function renderKPIs(){
   if(!filters.cliente && !filters.estado){
     state.tech.forEach(function(t){
       if(filters.periodo && t.periodo!==filters.periodo) return;
-      if(filters.buscar){ var q=filters.buscar.toLowerCase(); if([t.cliente,t.rut,t.cotizacion,t.factura,t.oc,t.hes].join(' ').toLowerCase().indexOf(q)===-1) return; }
+      if(filters.buscar){ if(!buscarMatch(filters.buscar, [t.cliente,t.rut,t.cotizacion,t.factura,t.oc,t.hes], [t.neto,t.total])) return; }
       var l=techLine(t); if(!l.emitida) return;
       var b=lineBucket(l);
       facturadoTot += l.total; facCount++;
