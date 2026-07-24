@@ -2681,14 +2681,48 @@ function buildMatrixSheet(valueFn){
   data.push(totalRow);
   return XLSX.utils.json_to_sheet(data);
 }
+/* Hoja visual: como la matriz en pantalla (estado abreviado + monto por celda) */
+function buildResumenVisualSheet(){
+  var clientsSorted = state.clients.filter(function(c){return c.activo!==false;}).slice().sort(function(a,b){ return a.cliente.localeCompare(b.cliente) || a.servicio.localeCompare(b.servicio); });
+  var periods = state.periods.slice().sort();
+  var header = ['Cliente / Servicio','RUT'].concat(periods.map(function(p){ return fmtPeriodo(p); })).concat(['Total facturado']);
+  var aoa = [header];
+  var totalsByPeriod = {}; periods.forEach(function(p){ totalsByPeriod[p]=0; });
+  clientsSorted.forEach(function(c){
+    var row = [c.cliente + ' — ' + c.servicio, c.rut||''];
+    var rowTot = 0;
+    periods.forEach(function(p){
+      var rec = getRecord(c.id, p);
+      if(!rec){ row.push(''); return; }
+      var st = computeStatus(rec, c);
+      var amt = recTotalFacturado(rec);
+      totalsByPeriod[p] += amt; rowTot += amt;
+      row.push(amt ? (STATUS_SHORT[st] + ' ' + fmtMoney(amt)) : (STATUS_DEFS[st] ? STATUS_DEFS[st].label : ''));
+    });
+    row.push(fmtMoney(rowTot));
+    aoa.push(row);
+  });
+  var totalRow = ['TOTAL FACTURADO',''];
+  var grand = 0;
+  periods.forEach(function(p){ totalRow.push(fmtMoney(totalsByPeriod[p])); grand += totalsByPeriod[p]; });
+  totalRow.push(fmtMoney(grand));
+  aoa.push(totalRow);
+  var ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{wch:40},{wch:14}].concat(periods.map(function(){ return {wch:20}; })).concat([{wch:18}]);
+  return ws;
+}
 function exportResumenMensualXlsx(){
   if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
   if(state.periods.length===0){ toast('No hay periodos para exportar.', 'err'); return; }
   var wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, buildResumenVisualSheet(), 'Resumen (estado+monto)');
   XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recFacturadoVal), 'Facturado mensual');
   XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recCobradoVal), 'Cobrado mensual');
   XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recFactorizadoVal), 'Factorizado mensual');
   XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recPendienteVal), 'Pendiente mensual');
+  var leg = [['Código','Estado']];
+  ['prefactura_enviada','esperando_oc','esperando_hes','listo_facturar','facturado','vencido','factorizado','pagado','cubierta'].forEach(function(k){ if(STATUS_SHORT[k] && STATUS_DEFS[k]) leg.push([STATUS_SHORT[k], STATUS_DEFS[k].label]); });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(leg), 'Leyenda');
   saveWb(wb, 'resumen-mensual-por-cliente.xlsx');
 }
 
