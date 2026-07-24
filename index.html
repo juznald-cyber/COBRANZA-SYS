@@ -2762,6 +2762,8 @@ function buildMatrixSheet(valueFn, techKind){
   return XLSX.utils.json_to_sheet(data);
 }
 /* Hoja visual: como la matriz en pantalla (estado abreviado + monto por celda) */
+function fechasToText(fechas){ if(!fechas || !fechas.length) return ''; var f=fechas.slice().sort(); return f[0]===f[f.length-1] ? fmtDate(f[0]) : (fmtDate(f[0])+' a '+fmtDate(f[f.length-1])); }
+function recFechaFacturacion(rec){ var fechas=[]; invoiceLines(rec).forEach(function(l){ if(l.emitida && l.fechaFac) fechas.push(l.fechaFac); }); return fechasToText(fechas); }
 function buildResumenVisualSheet(){
   var clientsSorted = state.clients.filter(function(c){return c.activo!==false;}).slice().sort(function(a,b){ return a.cliente.localeCompare(b.cliente) || a.servicio.localeCompare(b.servicio); });
   var periods = state.periods.slice().sort();
@@ -2777,7 +2779,10 @@ function buildResumenVisualSheet(){
       var st = computeStatus(rec, c);
       var amt = recTotalFacturado(rec);
       totalsByPeriod[p] += amt; rowTot += amt;
-      row.push(amt ? (STATUS_SHORT[st] + ' ' + fmtMoney(amt)) : (STATUS_DEFS[st] ? STATUS_DEFS[st].label : ''));
+      var cell = amt ? (STATUS_SHORT[st] + ' ' + fmtMoney(amt)) : (STATUS_DEFS[st] ? STATUS_DEFS[st].label : '');
+      var fecha = recFechaFacturacion(rec);
+      if(cell && fecha) cell += ' · ' + fecha;
+      row.push(cell);
     });
     row.push(fmtMoney(rowTot));
     aoa.push(row);
@@ -2789,13 +2794,16 @@ function buildResumenVisualSheet(){
     periods.forEach(function(p){
       var recs = techRecsFor(tc, p);
       if(!recs.length){ row.push(''); return; }
-      var amt = 0; recs.forEach(function(t){ var l=techLine(t); if(l.emitida) amt+=l.total; });
+      var amt = 0; var fechas = []; recs.forEach(function(t){ var l=techLine(t); if(l.emitida){ amt+=l.total; if(l.fechaFac) fechas.push(l.fechaFac); } });
       totalsByPeriod[p] += amt; rowTot += amt;
       var codes = recs.map(function(t){ return techStatusKey(t); });
       var st = codes.length===1 ? codes[0]
              : (codes.every(function(c){return c==='pagado';}) ? 'pagado'
              : (codes.every(function(c){return c==='factorizado';}) ? 'factorizado' : 'facturado'));
-      row.push(amt ? ((STATUS_SHORT[st]||st) + ' ' + fmtMoney(amt)) : (STATUS_DEFS[st] ? STATUS_DEFS[st].label : ''));
+      var cell = amt ? ((STATUS_SHORT[st]||st) + ' ' + fmtMoney(amt)) : (STATUS_DEFS[st] ? STATUS_DEFS[st].label : '');
+      var fecha = fechasToText(fechas);
+      if(cell && fecha) cell += ' · ' + fecha;
+      row.push(cell);
     });
     row.push(fmtMoney(rowTot));
     aoa.push(row);
@@ -2806,7 +2814,7 @@ function buildResumenVisualSheet(){
   totalRow.push(fmtMoney(grand));
   aoa.push(totalRow);
   var ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols'] = [{wch:40},{wch:14}].concat(periods.map(function(){ return {wch:20}; })).concat([{wch:18}]);
+  ws['!cols'] = [{wch:40},{wch:14}].concat(periods.map(function(){ return {wch:30}; })).concat([{wch:18}]);
   return ws;
 }
 function exportResumenMensualXlsx(){
