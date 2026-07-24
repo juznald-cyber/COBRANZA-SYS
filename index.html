@@ -1126,7 +1126,8 @@ var STATUS_DEFS = {
   factorizado:       {label:'Factorizado',                css:'b-purple', color:'var(--purple)'},
   pagado:            {label:'Pagado',                     css:'b-green',  color:'var(--green)'},
   cubierta:          {label:'Facturado en otra factura',  css:'b-teal',   color:'#1F9E93'},
-  anulada:           {label:'Anulada',                    css:'b-gray',   color:'var(--slate-soft)'}
+  anulada:           {label:'Anulada',                    css:'b-gray',   color:'var(--slate-soft)'},
+  sin_servicio:      {label:'Sin servicio',               css:'b-gray',   color:'var(--slate-soft)'}
 };
 
 var CHECKPOINT_STEPS = [
@@ -1181,6 +1182,7 @@ function blankRecord(clientId, periodo){
     factoring:{ factorizado:false, entidad:'', fecha:'', monto:0 },
     pago:{ pagado:false, fecha:'', monto:0 },
     cubierta:{ activa:false, factura:'', periodo:'' },
+    sinServicio:false,
     notas:''
   };
 }
@@ -1191,9 +1193,10 @@ function segFactura(rec){
   if(f.activa || (f.numero && String(f.numero).trim()) || (Number(f.total)||0) > 0 || (Number(f.neto)||0) > 0) return f;
   return null;
 }
-function recTotalFacturado(rec){ var t = rec.factura.emitida ? (rec.factura.total||0) : 0; var s=segFactura(rec); if(s) t += (s.total||0); return t; }
+function recTotalFacturado(rec){ if(rec.sinServicio) return 0; var t = rec.factura.emitida ? (rec.factura.total||0) : 0; var s=segFactura(rec); if(s) t += (s.total||0); return t; }
 function invoiceLines(rec){
   var lines=[];
+  if(rec.sinServicio) return lines; // mes sin servicio: no genera líneas ni montos
   if(rec.cubierta && rec.cubierta.activa) return lines; // facturado en otra factura: no cuenta montos aquí
   if(rec.factura.emitida || rec.factura.numero || rec.factura.total){
     lines.push({ tipo:'Principal', numero:rec.factura.numero||'', fechaFac:rec.factura.fechaFacturada||'', venc:rec.factura.fechaVencimiento||'',
@@ -1229,6 +1232,7 @@ function ensureRecord(clientId, periodo){
   if(!state.records[k].factura2) state.records[k].factura2 = blankFactura2();
   var _f2 = state.records[k].factura2; if(_f2.oc===undefined) _f2.oc=''; if(_f2.hes===undefined) _f2.hes='';
   if(!state.records[k].cubierta) state.records[k].cubierta = { activa:false, factura:'', periodo:'' };
+  if(state.records[k].sinServicio === undefined) state.records[k].sinServicio = false;
   if(state.periods.indexOf(periodo) === -1){ state.periods.push(periodo); sortPeriods(); }
   return state.records[k];
 }
@@ -1241,6 +1245,7 @@ function getClient(id){
 /* ---------- Cálculo de estado / pipeline ---------- */
 function computeStatus(rec, client){
   if(!rec) return 'sin_prefactura';
+  if(rec.sinServicio) return 'sin_servicio';
   if(rec.cubierta && rec.cubierta.activa) return 'cubierta';
   var pagado = rec.pago && rec.pago.pagado;
   var factorizado = rec.factoring && rec.factoring.factorizado;
@@ -2052,7 +2057,7 @@ function renderTable(){
 
 /* ---------- Render: matriz resumen ---------- */
 var STATUS_DOT_COLOR = { sin_prefactura:'var(--gray)', prefactura_enviada:'var(--slate-soft)', esperando_oc:'var(--amber)', esperando_hes:'var(--amber-deep)', listo_facturar:'var(--orange)', facturado:'var(--blue)', vencido:'var(--red)', factorizado:'var(--purple)', pagado:'var(--green)', cubierta:'#1F9E93' };
-var STATUS_SHORT = { sin_prefactura:'—', prefactura_enviada:'PF', esperando_oc:'OC', esperando_hes:'HES', listo_facturar:'LST', facturado:'FAC', vencido:'VNC', factorizado:'FZD', pagado:'PAG', cubierta:'REF' };
+var STATUS_SHORT = { sin_prefactura:'—', prefactura_enviada:'PF', esperando_oc:'OC', esperando_hes:'HES', listo_facturar:'LST', facturado:'FAC', vencido:'VNC', factorizado:'FZD', pagado:'PAG', cubierta:'REF', sin_servicio:'S/S' };
 function renderMatrix(){
   var clientsSorted = state.clients.filter(function(c){return c.activo!==false;}).slice().sort(function(a,b){ return a.cliente.localeCompare(b.cliente) || a.servicio.localeCompare(b.servicio); });
   var periods = state.periods.slice().sort();
@@ -2109,6 +2114,9 @@ function renderRecordModal(){
   modal.innerHTML =
     '<div class="modal-head"><div><h2>'+esc(client.cliente)+' <span style="color:var(--slate-soft);font-weight:500;">/ '+esc(client.servicio)+'</span></h2><p>'+esc(client.rut)+' · Periodo '+fmtPeriodo(rec.periodo)+'</p></div><button class="modal-close" id="btnCloseRecord">&times;</button></div>' +
     '<div class="modal-body">' + buildCheckpointHtml(cp) +
+      '<div class="section" style="border:1px solid var(--amber);background:var(--amber-pale);"><div class="section-body">' +
+        '<label class="check-row"><input type="checkbox" data-field="sinServicio" '+(rec.sinServicio?'checked':'')+'><span class="ctext">Este mes NO se prestó servicio (SIN SERVICIO)</span><span class="csub"> — no cuenta montos ni estados; queda marcado como “Sin servicio”.</span></label>' +
+      '</div></div>' +
       '<div class="section"><div class="section-head"><h4><span class="section-num">1</span>Prefactura</h4></div><div class="section-body">' +
         '<label class="check-row"><input type="checkbox" data-field="prefactura.enviada" '+(rec.prefactura.enviada?'checked':'')+'><span class="ctext">Prefactura enviada al cliente</span></label>' +
         '<div class="field-grid"><div class="field"><label>Fecha de envío</label><input type="date" data-field="prefactura.fecha" value="'+rec.prefactura.fecha+'"></div>' +
