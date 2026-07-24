@@ -201,6 +201,10 @@ a{color:inherit;}
 .rec-adj-name{font-weight:600;font-size:13px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .rec-adj-meta{font-size:11.5px;color:var(--slate-soft);}
 .rec-adj-actions{margin-left:auto;white-space:nowrap;display:flex;gap:2px;}
+.ctx-menu{position:fixed;z-index:100000;background:var(--panel);border:1px solid var(--line-strong);border-radius:9px;box-shadow:0 10px 30px rgba(0,0,0,.22);padding:5px;min-width:190px;}
+.ctx-menu .ctx-title{font-size:11px;color:var(--slate-soft);font-weight:700;padding:5px 10px 7px;border-bottom:1px solid var(--line);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ctx-menu button{display:block;width:100%;text-align:left;background:none;border:none;padding:9px 12px;font-size:13px;color:var(--ink);cursor:pointer;border-radius:6px;font-weight:600;}
+.ctx-menu button:hover{background:var(--amber-pale);}
 
 /* ---------- Tabs ---------- */
 .tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
@@ -583,7 +587,7 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
 
   <div class="tab-panel" id="tab-resumen">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
-      <p style="color:var(--slate);font-size:12.5px;margin:0;">Estado de cada cliente/servicio por periodo. Haz clic en una celda para abrir o crear ese registro.</p>
+      <p style="color:var(--slate);font-size:12.5px;margin:0;">Estado de cada cliente/servicio por periodo. <b>Clic</b> en una celda para abrir el registro · <b>clic derecho</b> para marcar el mes como “Sin servicio”.</p>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-sm" id="btnAddPeriodo">+ Agregar periodo</button>
         <button class="btn btn-amber btn-sm" id="btnExportXls">⬇ Exportar Excel</button>
@@ -1415,7 +1419,7 @@ function techEstadoAuto(t){ if(t.factura && (!t.estado || t.estado==='pendiente'
 /* Convierte un servicio de tecnología en una "línea" compatible con los KPIs/dashboard */
 function techLine(t){
   var emit = (t.estado!=='anulada') && !!(t.factura || t.estado==='facturado' || t.estado==='pagado' || t.estado==='factorizado');
-  return { total:Number(t.total)||0, emitida:emit, factorizado:(t.estado==='factorizado'), pagado:(t.estado==='pagado'), venc:t.fechaVencimiento||'', fechaFac:t.fechaFactura||'', factFecha:'', entidad:t.entidad||'', numero:t.factura||'', tipo:'Tecnología' };
+  return { total:Number(t.total)||0, neto:Number(t.neto)||0, iva:Number(t.iva)||0, emitida:emit, factorizado:(t.estado==='factorizado'), pagado:(t.estado==='pagado'), venc:t.fechaVencimiento||'', fechaFac:t.fechaFactura||'', factFecha:'', entidad:t.entidad||'', numero:t.factura||'', oc:t.oc||'', hes:t.hes||'', pagoFecha:'', tipo:'Tecnología' };
 }
 /* Traduce el estado de un servicio de tecnología a la misma clave que el filtro de Estado de cobranza */
 function techStatusKey(t){
@@ -2079,7 +2083,36 @@ function renderMatrix(){
   }).join('');
   var tfoot = '<tfoot><tr><td class="sticky-col" style="background:#FAF8F3;">Total facturado</td>' + periods.map(function(p){ return '<td>'+fmtMoney(totalsByPeriod[p].facturado)+'</td>'; }).join('') + '</tr></tfoot>';
   table.innerHTML = thead + '<tbody>' + rows + '</tbody>' + tfoot;
-  Array.prototype.forEach.call(table.querySelectorAll('.matrix-cell'), function(td){ td.addEventListener('click', function(){ openRecordModal(td.getAttribute('data-client'), td.getAttribute('data-periodo')); }); });
+  Array.prototype.forEach.call(table.querySelectorAll('.matrix-cell'), function(td){
+    td.addEventListener('click', function(){ openRecordModal(td.getAttribute('data-client'), td.getAttribute('data-periodo')); });
+    td.addEventListener('contextmenu', function(e){ e.preventDefault(); showMatrixMenu(e.clientX, e.clientY, td.getAttribute('data-client'), td.getAttribute('data-periodo')); });
+  });
+}
+/* Menú rápido en la celda del resumen (clic derecho / mantener presionado) */
+function closeMatrixMenu(){ var m=document.getElementById('matrixCtxMenu'); if(m) m.remove(); }
+function showMatrixMenu(x, y, clientId, periodo){
+  closeMatrixMenu();
+  var rec = getRecord(clientId, periodo);
+  var isSin = rec && rec.sinServicio;
+  var client = getClient(clientId);
+  var menu = document.createElement('div');
+  menu.className = 'ctx-menu'; menu.id = 'matrixCtxMenu';
+  menu.innerHTML =
+    '<div class="ctx-title">'+esc(client?client.cliente:'')+' · '+fmtPeriodo(periodo)+'</div>' +
+    '<button data-act="toggle">'+(isSin?'✓ Quitar “Sin servicio”':'Marcar SIN SERVICIO')+'</button>' +
+    '<button data-act="open">Abrir registro…</button>';
+  document.body.appendChild(menu);
+  menu.style.left = Math.max(6, Math.min(x, window.innerWidth-210)) + 'px';
+  menu.style.top  = Math.max(6, Math.min(y, window.innerHeight-110)) + 'px';
+  menu.querySelector('[data-act="toggle"]').addEventListener('click', function(ev){ ev.stopPropagation(); toggleSinServicioCell(clientId, periodo); closeMatrixMenu(); });
+  menu.querySelector('[data-act="open"]').addEventListener('click', function(ev){ ev.stopPropagation(); closeMatrixMenu(); openRecordModal(clientId, periodo); });
+}
+function toggleSinServicioCell(clientId, periodo){
+  ensureRecord(clientId, periodo);
+  var rec = getRecord(clientId, periodo);
+  rec.sinServicio = !rec.sinServicio;
+  persist();
+  toast(rec.sinServicio ? 'Mes marcado como “Sin servicio”.' : 'Se quitó “Sin servicio”.', 'ok');
 }
 function exportResumenCsv(){
   var clientsSorted = state.clients.slice().sort(function(a,b){ return a.cliente.localeCompare(b.cliente) || a.servicio.localeCompare(b.servicio); });
@@ -2548,6 +2581,21 @@ function recEntries(filterFn){
 }
 function saveWb(wb, name){ XLSX.writeFile(wb, name); toast('Informe generado.', 'ok'); }
 
+/* Tecnología como "líneas" de informe (misma forma que las de cobranza) */
+function techEntries(filterFn){
+  var out=[];
+  state.tech.forEach(function(t){
+    var l = techLine(t);
+    var c = { cliente: t.cliente||'—', servicio:'Tecnología', rut: t.rut||'' };
+    var r = { periodo: t.periodo||'', notas: t.notas||'' };
+    if(filterFn && !filterFn(l, r, c)) return;
+    out.push({ l:l, r:r, c:c });
+  });
+  return out;
+}
+/* Cobranza + Tecnología juntas */
+function allLinesTech(filterFn){ return allLines(filterFn).concat(techEntries(filterFn)); }
+
 /* Informe: todo lo factorizado (RUT + razón social entidad, factura, fecha factoring) */
 function exportFactorizadoXlsx(){
   if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
@@ -2578,7 +2626,7 @@ function exportFactorizadoXlsx(){
 /* Informe: detalle de todo lo facturado */
 function exportDetalleXlsx(){
   if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
-  var entries = allLines(function(l){ return l.emitida; });
+  var entries = allLinesTech(function(l){ return l.emitida; });
   if(!entries.length){ toast('No hay facturas emitidas.', 'err'); return; }
   var rows = entries.map(function(x){ var l=x.l, r=x.r, c=x.c; var ent=entidadByName(l.entidad);
     return {
@@ -2606,7 +2654,7 @@ function exportDetalleXlsx(){
 /* Informe: cuentas por cobrar (emitidas, no pagadas, no factorizadas) */
 function exportPorCobrarXlsx(){
   if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
-  var entries = allLines(function(l){ return l.emitida && !l.pagado && !l.factorizado; });
+  var entries = allLinesTech(function(l){ return l.emitida && !l.pagado && !l.factorizado; });
   if(!entries.length){ toast('No hay cuentas por cobrar.', 'err'); return; }
   entries.sort(function(a,b){ return (a.l.venc||'').localeCompare(b.l.venc||''); });
   var rows = entries.map(function(x){ var l=x.l, r=x.r, c=x.c; var d=daysUntil(l.venc);
@@ -2630,7 +2678,7 @@ function exportPorCobrarXlsx(){
 /* Informe: facturas cobradas / pagadas */
 function exportPagadasXlsx(){
   if(!window.XLSX){ toast('Módulo Excel no disponible.', 'err'); return; }
-  var entries = allLines(function(l){ return l.pagado; });
+  var entries = allLinesTech(function(l){ return l.pagado; });
   if(!entries.length){ toast('No hay facturas pagadas.', 'err'); return; }
   var rows = entries.map(function(x){ var l=x.l, r=x.r, c=x.c;
     return {
@@ -2675,7 +2723,24 @@ function recFacturadoVal(rec){ return recTotalFacturado(rec); }
 function recCobradoVal(rec){ var t=0; invoiceLines(rec).forEach(function(l){ if(l.pagado) t+=l.total; }); return t; }
 function recFactorizadoVal(rec){ var t=0; invoiceLines(rec).forEach(function(l){ if(l.factorizado) t+=l.total; }); return t; }
 function recPendienteVal(rec){ var t=0; invoiceLines(rec).forEach(function(l){ if(l.emitida && !l.pagado && !l.factorizado) t+=l.total; }); return t; }
-function buildMatrixSheet(valueFn){
+/* Agrupación de clientes de Tecnología (por nombre + RUT) y sus montos por mes */
+function techClientsList(){
+  var map={};
+  state.tech.forEach(function(t){ var cl=t.cliente||'—', ru=t.rut||''; var key=cl+'||'+ru; if(!map[key]) map[key]={cliente:cl, rut:ru}; });
+  return Object.keys(map).map(function(k){ return map[k]; }).sort(function(a,b){ return a.cliente.localeCompare(b.cliente); });
+}
+function techRecsFor(tc, period){ return state.tech.filter(function(t){ return (t.cliente||'—')===tc.cliente && (t.rut||'')===tc.rut && t.periodo===period; }); }
+function techVal(tc, period, kind){
+  var s=0;
+  techRecsFor(tc, period).forEach(function(t){ var l=techLine(t);
+    s += kind==='facturado'?(l.emitida?l.total:0)
+       : kind==='cobrado'?(l.pagado?l.total:0)
+       : kind==='factorizado'?(l.factorizado?l.total:0)
+       : kind==='pendiente'?((l.emitida && !l.pagado && !l.factorizado)?l.total:0):0;
+  });
+  return s;
+}
+function buildMatrixSheet(valueFn, techKind){
   var clientsSorted = state.clients.slice().sort(function(a,b){ return a.cliente.localeCompare(b.cliente) || a.servicio.localeCompare(b.servicio); });
   var periods = state.periods.slice().sort();
   var data = clientsSorted.map(function(c){
@@ -2683,6 +2748,13 @@ function buildMatrixSheet(valueFn){
     periods.forEach(function(p){ var rec=getRecord(c.id,p); var v=rec?valueFn(rec):0; row[fmtPeriodo(p)]=v; tot+=v; });
     row['Total']=tot; return row;
   });
+  if(techKind){
+    techClientsList().forEach(function(tc){
+      var row={'Cliente':tc.cliente,'Servicio':'Tecnología','RUT':tc.rut}; var tot=0;
+      periods.forEach(function(p){ var v=techVal(tc,p,techKind); row[fmtPeriodo(p)]=v; tot+=v; });
+      row['Total']=tot; data.push(row);
+    });
+  }
   var totalRow={'Cliente':'TOTAL','Servicio':'','RUT':''};
   periods.forEach(function(p){ totalRow[fmtPeriodo(p)]=data.reduce(function(a,r){ return a+(r[fmtPeriodo(p)]||0); },0); });
   totalRow['Total']=data.reduce(function(a,r){ return a+(r['Total']||0); },0);
@@ -2710,6 +2782,24 @@ function buildResumenVisualSheet(){
     row.push(fmtMoney(rowTot));
     aoa.push(row);
   });
+  /* Filas de Tecnología (agrupadas por cliente + RUT) */
+  techClientsList().forEach(function(tc){
+    var row = [tc.cliente + ' — TECNOLOGÍA', tc.rut||''];
+    var rowTot = 0;
+    periods.forEach(function(p){
+      var recs = techRecsFor(tc, p);
+      if(!recs.length){ row.push(''); return; }
+      var amt = 0; recs.forEach(function(t){ var l=techLine(t); if(l.emitida) amt+=l.total; });
+      totalsByPeriod[p] += amt; rowTot += amt;
+      var codes = recs.map(function(t){ return techStatusKey(t); });
+      var st = codes.length===1 ? codes[0]
+             : (codes.every(function(c){return c==='pagado';}) ? 'pagado'
+             : (codes.every(function(c){return c==='factorizado';}) ? 'factorizado' : 'facturado'));
+      row.push(amt ? ((STATUS_SHORT[st]||st) + ' ' + fmtMoney(amt)) : (STATUS_DEFS[st] ? STATUS_DEFS[st].label : ''));
+    });
+    row.push(fmtMoney(rowTot));
+    aoa.push(row);
+  });
   var totalRow = ['TOTAL FACTURADO',''];
   var grand = 0;
   periods.forEach(function(p){ totalRow.push(fmtMoney(totalsByPeriod[p])); grand += totalsByPeriod[p]; });
@@ -2724,10 +2814,10 @@ function exportResumenMensualXlsx(){
   if(state.periods.length===0){ toast('No hay periodos para exportar.', 'err'); return; }
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, buildResumenVisualSheet(), 'Resumen (estado+monto)');
-  XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recFacturadoVal), 'Facturado mensual');
-  XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recCobradoVal), 'Cobrado mensual');
-  XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recFactorizadoVal), 'Factorizado mensual');
-  XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recPendienteVal), 'Pendiente mensual');
+  XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recFacturadoVal, 'facturado'), 'Facturado mensual');
+  XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recCobradoVal, 'cobrado'), 'Cobrado mensual');
+  XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recFactorizadoVal, 'factorizado'), 'Factorizado mensual');
+  XLSX.utils.book_append_sheet(wb, buildMatrixSheet(recPendienteVal, 'pendiente'), 'Pendiente mensual');
   var leg = [['Código','Estado']];
   ['prefactura_enviada','esperando_oc','esperando_hes','listo_facturar','facturado','vencido','factorizado','pagado','cubierta'].forEach(function(k){ if(STATUS_SHORT[k] && STATUS_DEFS[k]) leg.push([STATUS_SHORT[k], STATUS_DEFS[k].label]); });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(leg), 'Leyenda');
@@ -2969,6 +3059,8 @@ function initEvents(){
   document.getElementById('btnImportTrigger').addEventListener('click', function(){ document.getElementById('fileImport').click(); });
   document.getElementById('fileImport').addEventListener('change', function(e){ if(e.target.files && e.target.files[0]) importBackup(e.target.files[0]); e.target.value = ''; });
   document.getElementById('btnBulkImportTrigger').addEventListener('click', openImportModal);
+  document.addEventListener('click', closeMatrixMenu);
+  window.addEventListener('scroll', closeMatrixMenu, true);
   document.getElementById('btnSubirAdj').addEventListener('click', subirAdjunto);
   document.getElementById('adjCatFilter').addEventListener('change', renderRespaldos);
   document.getElementById('adjSearch').addEventListener('input', debounce(renderRespaldos, 180));
