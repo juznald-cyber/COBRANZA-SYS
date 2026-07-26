@@ -1979,12 +1979,12 @@ function wireFilterInput(inputId, kind){
   var el = document.getElementById(inputId); if(!el) return;
   el.addEventListener('input', function(){
     var v = resolveFilter(kind, el.value);
-    if(v !== null){ filters[kind] = v; renderKPIs(); renderTable(); renderTech(); }
+    if(v !== null){ filters[kind] = v; renderKPIs(); renderTable(); renderTech(); renderMatrix(); }
   });
   el.addEventListener('change', function(){
     var v = resolveFilter(kind, el.value);
     if(v === null){ setFilterInput(inputId, kind); }
-    else { filters[kind] = v; setFilterInput(inputId, kind); renderKPIs(); renderTable(); renderTech(); }
+    else { filters[kind] = v; setFilterInput(inputId, kind); renderKPIs(); renderTable(); renderTech(); renderMatrix(); }
   });
 }
 
@@ -2064,9 +2064,23 @@ var STATUS_DOT_COLOR = { sin_prefactura:'var(--gray)', prefactura_enviada:'var(-
 var STATUS_SHORT = { sin_prefactura:'—', prefactura_enviada:'PF', esperando_oc:'OC', esperando_hes:'HES', listo_facturar:'LST', facturado:'FAC', vencido:'VNC', factorizado:'FZD', pagado:'PAG', cubierta:'REF', sin_servicio:'S/S' };
 function renderMatrix(){
   var clientsSorted = state.clients.filter(function(c){return c.activo!==false;}).slice().sort(function(a,b){ return a.cliente.localeCompare(b.cliente) || a.servicio.localeCompare(b.servicio); });
-  var periods = state.periods.slice().sort();
   var table = document.getElementById('matrixTable');
-  if(periods.length === 0){ table.innerHTML = '<tr><td style="padding:40px;text-align:center;color:var(--slate-soft);">Aún no hay periodos.</td></tr>'; return; }
+  var allPeriods = state.periods.slice().sort();
+  if(allPeriods.length === 0){ table.innerHTML = '<tr><td style="padding:40px;text-align:center;color:var(--slate-soft);">Aún no hay periodos.</td></tr>'; return; }
+  /* Aplicar filtros: periodo limita columnas; cliente/estado/buscar limitan filas */
+  var periods = filters.periodo ? allPeriods.filter(function(p){ return p === filters.periodo; }) : allPeriods;
+  var hasRecFilter = !!(filters.estado || filters.buscar);
+  clientsSorted = clientsSorted.filter(function(c){
+    if(filters.cliente && String(c.id) !== String(filters.cliente)) return false;
+    if(!hasRecFilter) return true;
+    var match = periods.some(function(p){ var rec=getRecord(c.id, p); if(!rec) return false; return passesFilters({client:c, rec:rec, status:computeStatus(rec, c)}); });
+    if(!match && filters.buscar && !filters.estado && buscarMatch(filters.buscar, [c.cliente, c.servicio, c.rut], [])) match = true;
+    return match;
+  });
+  if(periods.length === 0 || clientsSorted.length === 0){
+    table.innerHTML = '<tr><td style="padding:40px;text-align:center;color:var(--slate-soft);">No hay registros que coincidan con los filtros aplicados.</td></tr>';
+    return;
+  }
   var thead = '<thead><tr><th class="sticky-col row-label">Cliente / Servicio</th>' + periods.map(function(p){ return '<th>'+fmtPeriodo(p).replace(' ', '<br>')+'</th>'; }).join('') + '</tr></thead>';
   var totalsByPeriod = {}; periods.forEach(function(p){ totalsByPeriod[p] = {facturado:0}; });
   var rows = clientsSorted.map(function(client){
@@ -3049,8 +3063,8 @@ function initEvents(){
   wireFilterInput('fCliente', 'cliente');
   wireFilterInput('fPeriodo', 'periodo');
   wireFilterInput('fEstado', 'estado');
-  document.getElementById('fBuscar').addEventListener('input', debounce(function(e){ filters.buscar = e.target.value; renderKPIs(); renderTable(); renderTech(); }, 200));
-  document.getElementById('btnClearFilters').addEventListener('click', function(){ filters = {cliente:'', periodo:'', estado:'', buscar:''}; document.getElementById('fBuscar').value = ''; renderFilterOptions(); renderKPIs(); renderTable(); renderTech(); });
+  document.getElementById('fBuscar').addEventListener('input', debounce(function(e){ filters.buscar = e.target.value; renderKPIs(); renderTable(); renderTech(); renderMatrix(); }, 200));
+  document.getElementById('btnClearFilters').addEventListener('click', function(){ filters = {cliente:'', periodo:'', estado:'', buscar:''}; document.getElementById('fBuscar').value = ''; renderFilterOptions(); renderKPIs(); renderTable(); renderTech(); renderMatrix(); });
   document.getElementById('btnNuevoRegistro').addEventListener('click', openNuevoRegistroModal);
   document.getElementById('btnAddPeriodo').addEventListener('click', openPeriodoModal);
   document.getElementById('btnNuevoCliente').addEventListener('click', function(){ openClientModal(null); });
