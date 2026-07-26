@@ -569,6 +569,7 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
             <th>Cliente / Servicio</th>
             <th>Periodo</th>
             <th>N° Factura</th>
+            <th>Emisión</th>
             <th>Vencimiento</th>
             <th>Total facturado</th>
             <th>Estado</th>
@@ -619,6 +620,7 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
             <th>Orden de Compra</th>
             <th>HES</th>
             <th>Total</th>
+            <th>Emisión</th>
             <th>Vencimiento</th>
             <th>Estado</th>
             <th></th>
@@ -1489,6 +1491,7 @@ function renderTech(){
       '<td class="mono">'+(t.oc?esc(t.oc):'—')+'</td>' +
       '<td class="mono">'+(t.hes?esc(t.hes):'—')+'</td>' +
       '<td class="mono">'+(t.total?fmtMoney(t.total):'—')+'</td>' +
+      '<td class="mono">'+(t.fechaFactura?fmtDate(t.fechaFactura):'—')+'</td>' +
       '<td class="mono">'+(t.fechaVencimiento?fmtDate(t.fechaVencimiento):'—')+'</td>' +
       '<td><span class="badge '+sd.css+'">'+sd.label+'</span>'+((t.estado==='factorizado'&&t.entidad)?('<br><span style="font-size:11px;color:var(--purple);">'+esc(t.entidad)+'</span>'):'')+'</td>' +
       '<td><button class="btn btn-ghost btn-sm">Abrir →</button></td>' +
@@ -2047,7 +2050,8 @@ function renderTable(){
       '<td class="cliente-cell"><strong>'+esc(client.cliente)+'</strong><span>'+esc(client.servicio)+' · '+esc(client.rut)+'</span></td>' +
       '<td>'+fmtPeriodo(rec.periodo)+'</td>' +
       '<td class="mono">'+numTxt+'</td>' +
-      '<td class="mono">'+fmtDate(rec.factura.fechaVencimiento)+'</td>' +
+      '<td class="mono">'+(rec.factura.fechaFacturada?fmtDate(rec.factura.fechaFacturada):'—')+'</td>' +
+      '<td class="mono">'+(rec.factura.fechaVencimiento?fmtDate(rec.factura.fechaVencimiento):'—')+'</td>' +
       '<td class="mono">'+(totFac ? fmtMoney(totFac) : '—')+'</td>' +
       '<td><span class="badge '+st.css+'">'+st.label+'</span></td>' +
       '<td>'+factoringTxt+'</td>' +
