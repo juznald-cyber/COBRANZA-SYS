@@ -1483,6 +1483,7 @@ function renderTech(){
   empty.style.display='none';
   body.innerHTML = list.map(function(t){
     var sd = techBadge(t);
+    var nAdjT = (state.adjuntos||[]).filter(function(a){ return a.recordKey === ('tech__'+t.id); }).length;
     return '<tr data-id="'+t.id+'">' +
       '<td>'+fmtPeriodo(t.periodo)+'</td>' +
       '<td class="cliente-cell"><strong>'+esc(t.cliente||'—')+'</strong><span>'+esc(t.rut||'')+'</span></td>' +
@@ -1494,7 +1495,7 @@ function renderTech(){
       '<td class="mono">'+(t.fechaFactura?fmtDate(t.fechaFactura):'—')+'</td>' +
       '<td class="mono">'+(t.fechaVencimiento?fmtDate(t.fechaVencimiento):'—')+'</td>' +
       '<td><span class="badge '+sd.css+'">'+sd.label+'</span>'+((t.estado==='factorizado'&&t.entidad)?('<br><span style="font-size:11px;color:var(--purple);">'+esc(t.entidad)+'</span>'):'')+'</td>' +
-      '<td><button class="btn btn-ghost btn-sm">Abrir →</button></td>' +
+      '<td style="white-space:nowrap;">'+(nAdjT?'<span class="clip-badge" title="'+nAdjT+' respaldo(s) adjunto(s)">📎 '+nAdjT+'</span> ':'')+'<button class="btn btn-ghost btn-sm">Abrir →</button></td>' +
       '</tr>';
   }).join('');
   Array.prototype.forEach.call(body.querySelectorAll('tr'), function(tr){
@@ -1531,6 +1532,16 @@ function renderTechModal(){
       '<div class="field" style="margin-top:12px;"><label>Entidad financiera <span style="font-weight:400;color:var(--slate-soft);">(si se factorizó · escribe para buscar)</span></label><input type="text" list="entidadesDatalist" id="tf_entidad" value="'+esc(t.entidad||'')+'" placeholder="Escribe o elige de la lista…" autocomplete="off"></div>' +
       '<div class="field" style="margin-top:12px;"><label>Notas / glosa</label><textarea id="tf_notas">'+esc(t.notas)+'</textarea></div>' +
       '<p class="hint">Al ingresar un N° de factura, si el estado está en “Pendiente” pasará automáticamente a “Facturado”.</p>' +
+      '<div class="section" style="margin-top:14px;"><div class="section-head"><h4>📎 Respaldos de este servicio (factura, OC, HES)</h4></div><div class="section-body">' +
+        '<div class="adj-form" style="margin-bottom:10px;">' +
+          '<div class="fgroup"><label>Archivo (PDF o imagen)</label><input type="file" id="tec_adjFile" accept=".pdf,image/*"></div>' +
+          '<div class="fgroup"><label>Tipo</label><select id="tec_adjCat"><option value="factura">Factura</option><option value="oc">Orden de compra</option><option value="hes">HES / ROC</option><option value="otro">Otro</option></select></div>' +
+          '<div class="fgroup"><label>N° de referencia</label><input type="text" id="tec_adjRef" value="'+esc(t.factura||'')+'" placeholder="N° factura"></div>' +
+          '<div class="fgroup" style="align-self:flex-end;"><button class="btn btn-primary" id="tec_btnAdj">Adjuntar</button></div>' +
+        '</div>' +
+        '<div id="tecAdjList"></div>' +
+        '<p class="hint">Máx. 700 KB por archivo. También aparecen en la pestaña “Respaldos”.'+(isEdit?'':' Al adjuntar, el servicio se guardará automáticamente.')+'</p>' +
+      '</div></div>' +
     '</div>' +
     '<div class="modal-foot">' +
       (isEdit ? '<button class="btn btn-ghost btn-danger-text" id="btnDeleteTech">Eliminar</button>' : '<span></span>') +
@@ -1548,34 +1559,100 @@ function renderTechModal(){
   var fecfacEl = document.getElementById('tf_fecfac'), vtoEl = document.getElementById('tf_vto');
   fecfacEl.addEventListener('change', function(){ if(fecfacEl.value && !vtoEl.value) vtoEl.value = addDaysISO(fecfacEl.value, 30); });
   document.getElementById('btnSaveTech').onclick = function(){
-    var neto = parseFloat(document.getElementById('tf_neto').value)||0;
-    var data = {
-      periodo: document.getElementById('tf_periodo').value,
-      rut: document.getElementById('tf_rut').value.trim(),
-      cliente: document.getElementById('tf_cliente').value.trim(),
-      cotizacion: document.getElementById('tf_cot').value.trim(),
-      factura: document.getElementById('tf_factura').value.trim(),
-      oc: document.getElementById('tf_oc').value.trim(),
-      hes: document.getElementById('tf_hes').value.trim(),
-      neto: neto, iva: Math.round(neto*0.19), total: neto + Math.round(neto*0.19),
-      estado: document.getElementById('tf_estado').value,
-      entidad: document.getElementById('tf_entidad').value.trim(),
-      notas: document.getElementById('tf_notas').value.trim(),
-      fechaFactura: document.getElementById('tf_fecfac').value,
-      fechaVencimiento: document.getElementById('tf_vto').value
-    };
-    if(!data.cliente){ toast('El cliente es obligatorio.', 'err'); return; }
-    if(data.fechaFactura && !data.fechaVencimiento) data.fechaVencimiento = addDaysISO(data.fechaFactura, 30);
-    techEstadoAuto(data);
-    if(isEdit){ Object.assign(getTech(editingTechId), data); toast('Servicio actualizado.', 'ok'); }
-    else { data.id = uid('t'); state.tech.push(data); toast('Servicio agregado.', 'ok'); }
+    var wasNew = !editingTechId;
+    var id = saveTechFromForm(); if(!id) return;
+    toast(wasNew ? 'Servicio agregado.' : 'Servicio actualizado.', 'ok');
     closeTechModal(); persist();
   };
+  document.getElementById('tec_btnAdj').onclick = subirAdjuntoTech;
+  renderTechAdjuntos();
   if(isEdit){
     document.getElementById('btnDeleteTech').onclick = function(){
       if(confirm('¿Eliminar este servicio de tecnología?')){ state.tech = state.tech.filter(function(x){return x.id!==editingTechId;}); closeTechModal(); toast('Servicio eliminado.', 'ok'); persist(); }
     };
   }
+}
+/* Lee el formulario de tecnología y guarda (crea o actualiza). Devuelve el id o null. */
+function readTechData(){
+  var neto = parseFloat(document.getElementById('tf_neto').value)||0;
+  return {
+    periodo: document.getElementById('tf_periodo').value,
+    rut: document.getElementById('tf_rut').value.trim(),
+    cliente: document.getElementById('tf_cliente').value.trim(),
+    cotizacion: document.getElementById('tf_cot').value.trim(),
+    factura: document.getElementById('tf_factura').value.trim(),
+    oc: document.getElementById('tf_oc').value.trim(),
+    hes: document.getElementById('tf_hes').value.trim(),
+    neto: neto, iva: Math.round(neto*0.19), total: neto + Math.round(neto*0.19),
+    estado: document.getElementById('tf_estado').value,
+    entidad: document.getElementById('tf_entidad').value.trim(),
+    notas: document.getElementById('tf_notas').value.trim(),
+    fechaFactura: document.getElementById('tf_fecfac').value,
+    fechaVencimiento: document.getElementById('tf_vto').value
+  };
+}
+function saveTechFromForm(){
+  var data = readTechData();
+  if(!data.cliente){ toast('El cliente es obligatorio.', 'err'); return null; }
+  if(data.fechaFactura && !data.fechaVencimiento) data.fechaVencimiento = addDaysISO(data.fechaFactura, 30);
+  techEstadoAuto(data);
+  if(editingTechId){ Object.assign(getTech(editingTechId), data); }
+  else { data.id = uid('t'); state.tech.push(data); editingTechId = data.id; }
+  return editingTechId;
+}
+/* Respaldos ligados a un servicio de tecnología */
+function techRecordKey(id){ return 'tech__' + id; }
+function techAdjuntos(){ if(!editingTechId) return []; var k=techRecordKey(editingTechId); return (state.adjuntos||[]).filter(function(a){ return a.recordKey===k; }); }
+function renderTechAdjuntos(){
+  var list = document.getElementById('tecAdjList'); if(!list) return;
+  var items = techAdjuntos().sort(function(a,b){ return (b.at||'').localeCompare(a.at||''); });
+  if(!items.length){ list.innerHTML = '<p style="color:var(--slate-soft);font-size:12.5px;margin:4px 0 0;">Aún no hay respaldos adjuntos a este servicio.</p>'; return; }
+  list.innerHTML = items.map(function(a){
+    return '<div class="rec-adj-item">' +
+      '<span class="adj-cat-badge">' + esc(ADJ_CATS[a.cat] || a.cat) + '</span>' +
+      '<span class="rec-adj-name" title="' + esc(a.name) + '">' + esc(a.name) + '</span>' +
+      '<span class="rec-adj-meta">' + fmtSize(a.size) + (a.nota ? (' · ' + esc(a.nota)) : '') + '</span>' +
+      '<span class="rec-adj-actions">' +
+        '<button class="btn btn-ghost btn-sm" data-tadjver="' + a.id + '">Ver</button>' +
+        '<button class="btn btn-ghost btn-sm" data-tadjdl="' + a.id + '">Descargar</button>' +
+        '<button class="btn btn-ghost btn-sm" data-tadjdel="' + a.id + '" style="color:#C0392B;">Eliminar</button>' +
+      '</span></div>';
+  }).join('');
+  Array.prototype.forEach.call(list.querySelectorAll('[data-tadjver]'), function(x){ x.addEventListener('click', function(){ abrirAdjunto(x.getAttribute('data-tadjver'), false); }); });
+  Array.prototype.forEach.call(list.querySelectorAll('[data-tadjdl]'), function(x){ x.addEventListener('click', function(){ abrirAdjunto(x.getAttribute('data-tadjdl'), true); }); });
+  Array.prototype.forEach.call(list.querySelectorAll('[data-tadjdel]'), function(x){ x.addEventListener('click', function(){ eliminarAdjuntoTech(x.getAttribute('data-tadjdel')); }); });
+}
+async function eliminarAdjuntoTech(id){
+  if(!confirm('¿Eliminar este respaldo? Esta acción no se puede deshacer.')) return;
+  try{ if(cloud.user && cloud.db) await cloud.db.collection('adjuntos').doc(id).delete(); }catch(e){ console.error(e); }
+  state.adjuntos = state.adjuntos.filter(function(a){ return a.id !== id; });
+  saveLocal(); renderTechAdjuntos(); renderRespaldos();
+  toast('Respaldo eliminado.', 'ok');
+}
+async function subirAdjuntoTech(){
+  if(!cloud.user || !cloud.db){ toast('Debes iniciar sesión para adjuntar respaldos.', 'err'); return; }
+  var fileInput = document.getElementById('tec_adjFile');
+  var f = fileInput.files && fileInput.files[0];
+  if(!f){ toast('Primero selecciona un archivo.', 'err'); return; }
+  if(f.size > ADJ_MAX){ toast('El archivo pesa ' + fmtSize(f.size) + '. El máximo es 700 KB — comprímelo o escanéalo en menor resolución.', 'err'); return; }
+  /* Si el servicio es nuevo (sin guardar), se guarda primero para tener id */
+  if(!editingTechId){ var newId = saveTechFromForm(); if(!newId) return; persist(); }
+  var t = getTech(editingTechId) || {};
+  var cat = document.getElementById('tec_adjCat').value;
+  var ref = (document.getElementById('tec_adjRef').value || '').trim();
+  var btn = document.getElementById('tec_btnAdj'); btn.disabled = true; btn.textContent = 'Subiendo…';
+  try{
+    var dataUrl = await readFileAsDataURL(f);
+    var base64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
+    var id = 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+    await cloud.db.collection('adjuntos').doc(id).set({ data:base64, name:f.name, mime:f.type||'application/octet-stream', at:new Date().toISOString(), uploadedBy:cloud.user.email });
+    state.adjuntos.push({ id:id, cat:cat, ref:ref, cliente:t.cliente||'', nota:'', name:f.name, mime:f.type||'', size:f.size, at:new Date().toISOString(), recordKey:techRecordKey(editingTechId), periodo:t.periodo||'' });
+    saveLocal();
+    fileInput.value = '';
+    renderTechAdjuntos(); renderRespaldos();
+    toast('Respaldo adjuntado al servicio.', 'ok');
+  }catch(e){ console.error(e); toast('No se pudo subir el respaldo. Revisa tu conexión.', 'err'); }
+  finally{ btn.disabled = false; btn.textContent = 'Adjuntar'; }
 }
 
 /* ============================================================
