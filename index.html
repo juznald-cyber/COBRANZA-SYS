@@ -375,6 +375,7 @@ tbody tr:hover{background:#FAF8F1;}
 .cliente-card.inactivo{opacity:.55;background:var(--paper);border-style:dashed;}
 .cliente-card.inactivo .cname::after{content:' · INACTIVO';color:var(--orange);font-size:10px;font-weight:700;}
 .cinactivo{font-size:11px;color:var(--orange);font-weight:700;margin-top:3px;}
+.section-body.section-disabled{opacity:.5;pointer-events:none;}
 .cliente-head-row{
   display:grid;grid-template-columns:1.4fr 1fr 1.3fr 90px 120px 80px 70px;gap:10px;padding:8px 14px;
   font-size:10.5px;text-transform:uppercase;color:var(--slate-soft);font-weight:700;margin-bottom:6px;
@@ -2256,15 +2257,15 @@ function renderRecordModal(){
           '<div class="field"><label>Fecha respuesta</label><input type="date" data-field="respuesta.fecha" value="'+rec.respuesta.fecha+'"></div></div>' +
         '<div class="field" style="margin-top:10px;"><label>Comentario del cliente (si refuta)</label><textarea data-field="respuesta.comentario">'+esc(rec.respuesta.comentario)+'</textarea></div>' +
       '</div></div>' +
-      '<div class="section"><div class="section-head"><h4><span class="section-num">2</span>Orden de Compra</h4>'+(client.requiereOC ? '' : '<span class="pill-oc">Este cliente no exige OC</span>')+'</div><div class="section-body">' +
-        '<label class="check-row"><input type="checkbox" data-field="oc.solicitada" '+(rec.oc.solicitada?'checked':'')+'><span class="ctext">OC solicitada al cliente</span></label>' +
-        '<label class="check-row"><input type="checkbox" data-field="oc.recibida" '+(rec.oc.recibida?'checked':'')+'><span class="ctext">OC recibida</span></label>' +
-        '<div class="field-grid"><div class="field"><label>N° de Orden de Compra</label><input type="text" data-field="oc.numero" value="'+esc(rec.oc.numero)+'"></div><div class="field"><label>Fecha de recepción</label><input type="date" data-field="oc.fecha" value="'+rec.oc.fecha+'"></div></div>' +
+      '<div class="section"><div class="section-head"><h4><span class="section-num">2</span>Orden de Compra</h4>'+(client.requiereOC ? '' : '<span class="pill-oc">Este cliente no exige OC</span>')+'</div><div class="section-body'+(client.requiereOC?'':' section-disabled')+'">' +
+        '<label class="check-row"><input type="checkbox" data-field="oc.solicitada" '+(rec.oc.solicitada?'checked':'')+(client.requiereOC?'':' disabled')+'><span class="ctext">OC solicitada al cliente</span></label>' +
+        '<label class="check-row"><input type="checkbox" data-field="oc.recibida" '+(rec.oc.recibida?'checked':'')+(client.requiereOC?'':' disabled')+'><span class="ctext">OC recibida</span></label>' +
+        '<div class="field-grid"><div class="field"><label>N° de Orden de Compra</label><input type="text" data-field="oc.numero" value="'+esc(rec.oc.numero)+'"'+(client.requiereOC?'':' disabled')+'></div><div class="field"><label>Fecha de recepción</label><input type="date" data-field="oc.fecha" value="'+rec.oc.fecha+'"'+(client.requiereOC?'':' disabled')+'></div></div>' +
       '</div></div>' +
-      '<div class="section"><div class="section-head"><h4><span class="section-num">3</span>HES / ROC</h4>'+(client.requiereHES ? '' : '<span class="pill-oc">Este cliente no exige HES/ROC</span>')+'</div><div class="section-body">' +
-        '<label class="check-row"><input type="checkbox" data-field="hes.solicitado" '+(rec.hes.solicitado?'checked':'')+'><span class="ctext">HES / ROC solicitado</span></label>' +
-        '<label class="check-row"><input type="checkbox" data-field="hes.recibido" '+(rec.hes.recibido?'checked':'')+'><span class="ctext">HES / ROC recibido</span></label>' +
-        '<div class="field-grid"><div class="field"><label>N° HES / ROC</label><input type="text" data-field="hes.numero" value="'+esc(rec.hes.numero)+'"></div><div class="field"><label>Fecha de recepción</label><input type="date" data-field="hes.fecha" value="'+rec.hes.fecha+'"></div></div>' +
+      '<div class="section"><div class="section-head"><h4><span class="section-num">3</span>HES / ROC</h4>'+(client.requiereHES ? '' : '<span class="pill-oc">Este cliente no exige HES/ROC</span>')+'</div><div class="section-body'+(client.requiereHES?'':' section-disabled')+'">' +
+        '<label class="check-row"><input type="checkbox" data-field="hes.solicitado" '+(rec.hes.solicitado?'checked':'')+(client.requiereHES?'':' disabled')+'><span class="ctext">HES / ROC solicitado</span></label>' +
+        '<label class="check-row"><input type="checkbox" data-field="hes.recibido" '+(rec.hes.recibido?'checked':'')+(client.requiereHES?'':' disabled')+'><span class="ctext">HES / ROC recibido</span></label>' +
+        '<div class="field-grid"><div class="field"><label>N° HES / ROC</label><input type="text" data-field="hes.numero" value="'+esc(rec.hes.numero)+'"'+(client.requiereHES?'':' disabled')+'></div><div class="field"><label>Fecha de recepción</label><input type="date" data-field="hes.fecha" value="'+rec.hes.fecha+'"'+(client.requiereHES?'':' disabled')+'></div></div>' +
       '</div></div>' +
       '<div class="section"><div class="section-head"><h4><span class="section-num">4</span>Factura</h4></div><div class="section-body">' +
         '<label class="check-row"><input type="checkbox" data-field="factura.emitida" '+(rec.factura.emitida?'checked':'')+'><span class="ctext">Factura emitida</span></label>' +
