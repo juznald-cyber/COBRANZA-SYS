@@ -364,7 +364,7 @@ tbody tr:hover{background:#FAF8F1;}
 /* ---------- Clientes tab ---------- */
 .clientes-grid{display:grid;gap:10px;}
 .cliente-card{
-  display:grid;grid-template-columns:1.4fr 1fr 1.3fr 90px 70px;gap:10px;align-items:center;
+  display:grid;grid-template-columns:1.4fr 1fr 1.3fr 90px 120px 70px;gap:10px;align-items:center;
   background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:11px 14px;
 }
 .cliente-card .cname{font-weight:700;}
@@ -373,7 +373,7 @@ tbody tr:hover{background:#FAF8F1;}
 .cliente-card .crut{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--slate-soft);}
 .toggle-oc{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--slate);}
 .cliente-head-row{
-  display:grid;grid-template-columns:1.4fr 1fr 1.3fr 90px 70px;gap:10px;padding:8px 14px;
+  display:grid;grid-template-columns:1.4fr 1fr 1.3fr 90px 120px 70px;gap:10px;padding:8px 14px;
   font-size:10.5px;text-transform:uppercase;color:var(--slate-soft);font-weight:700;margin-bottom:6px;
   position:sticky;top:0;z-index:5;background:var(--paper);border-bottom:1px solid var(--line);
 }
@@ -651,7 +651,7 @@ body.theme-dark .dias-chip.venc{color:#E08585;}
       <button class="btn btn-amber btn-sm" id="btnNuevoCliente">+ Nuevo cliente/servicio</button>
     </div>
     <div class="cliente-head-row">
-      <span>Cliente / Servicio</span><span>RUT</span><span>Contacto</span><span>Exige OC</span><span></span>
+      <span>Cliente / Servicio</span><span>RUT</span><span>Contacto</span><span>Exige OC</span><span>Exige ROC/HES</span><span></span>
     </div>
     <div class="clientes-grid" id="clientesGrid"></div>
   </div>
@@ -1256,7 +1256,7 @@ function computeStatus(rec, client){
   var pagado = rec.pago && rec.pago.pagado;
   var factorizado = rec.factoring && rec.factoring.factorizado;
   var facturado = rec.factura && rec.factura.emitida;
-  var hesOk = rec.hes && rec.hes.recibido;
+  var hesOk = !client || !client.requiereHES || (rec.hes && rec.hes.recibido);
   var ocOk = !client || !client.requiereOC || (rec.oc && rec.oc.recibida);
   var prefacturaOk = rec.prefactura && rec.prefactura.enviada;
   if(pagado) return 'pagado';
@@ -1275,10 +1275,11 @@ function checkpointState(rec, client){
   var st = computeStatus(rec, client);
   var steps = CHECKPOINT_STEPS.map(function(s){ return Object.assign({},s); });
   var reqOC = !client || client.requiereOC;
+  var reqHES = !client || client.requiereHES;
   var done = {
     prefactura: !!(rec && rec.prefactura.enviada),
     oc: reqOC ? !!(rec && rec.oc.recibida) : true,
-    hes: !!(rec && rec.hes.recibido),
+    hes: reqHES ? !!(rec && rec.hes.recibido) : true,
     factura: !!(rec && rec.factura.emitida),
     sii: !!(rec && rec.factura.enviadaSII),
     cobro: !!(rec && (rec.pago.pagado || rec.factoring.factorizado))
@@ -1742,7 +1743,7 @@ function resolveClientId(cliente, servicio, rut, lookup){
     var m = byName.filter(function(c){ return normTextU(c.servicio)===normTextU(servicio); });
     if(m.length) return m[0].id;
   } else if(byName.length===1){ return byName[0].id; }
-  var nc = {id:uid('c'), rut:String(rut||''), cliente:String(cliente).trim(), servicio:String(servicio||'GENERAL').trim().toUpperCase(), contacto:'', correo:'', requiereOC:true, activo:true};
+  var nc = {id:uid('c'), rut:String(rut||''), cliente:String(cliente).trim(), servicio:String(servicio||'GENERAL').trim().toUpperCase(), contacto:'', correo:'', requiereOC:true, requiereHES:false, activo:true};
   state.clients.push(nc); lookup[normTextU(nc.cliente+' '+nc.servicio)]=nc.id; return nc.id;
 }
 function payloadPrimary(nd){
@@ -1802,7 +1803,7 @@ function applySegunda(rec, p, tipoDefault){
   if(p.hes && !rec.hes.numero){ rec.hes.solicitado=true; rec.hes.recibido=true; rec.hes.numero=p.hes; }
 }
 function makeSpilloverClient(cliente, servicio, rut){
-  var nc = {id:uid('c'), rut:String(rut||''), cliente:String(cliente).trim(), servicio:(String(servicio||'GENERAL').trim().toUpperCase()+' (EXTRA)'), contacto:'', correo:'', requiereOC:true, activo:true};
+  var nc = {id:uid('c'), rut:String(rut||''), cliente:String(cliente).trim(), servicio:(String(servicio||'GENERAL').trim().toUpperCase()+' (EXTRA)'), contacto:'', correo:'', requiereOC:true, requiereHES:false, activo:true};
   state.clients.push(nc); return nc.id;
 }
 function processCobranzaRows(rows){
@@ -2257,7 +2258,7 @@ function renderRecordModal(){
         '<label class="check-row"><input type="checkbox" data-field="oc.recibida" '+(rec.oc.recibida?'checked':'')+'><span class="ctext">OC recibida</span></label>' +
         '<div class="field-grid"><div class="field"><label>N° de Orden de Compra</label><input type="text" data-field="oc.numero" value="'+esc(rec.oc.numero)+'"></div><div class="field"><label>Fecha de recepción</label><input type="date" data-field="oc.fecha" value="'+rec.oc.fecha+'"></div></div>' +
       '</div></div>' +
-      '<div class="section"><div class="section-head"><h4><span class="section-num">3</span>HES / ROC</h4></div><div class="section-body">' +
+      '<div class="section"><div class="section-head"><h4><span class="section-num">3</span>HES / ROC</h4>'+(client.requiereHES ? '' : '<span class="pill-oc">Este cliente no exige HES/ROC</span>')+'</div><div class="section-body">' +
         '<label class="check-row"><input type="checkbox" data-field="hes.solicitado" '+(rec.hes.solicitado?'checked':'')+'><span class="ctext">HES / ROC solicitado</span></label>' +
         '<label class="check-row"><input type="checkbox" data-field="hes.recibido" '+(rec.hes.recibido?'checked':'')+'><span class="ctext">HES / ROC recibido</span></label>' +
         '<div class="field-grid"><div class="field"><label>N° HES / ROC</label><input type="text" data-field="hes.numero" value="'+esc(rec.hes.numero)+'"></div><div class="field"><label>Fecha de recepción</label><input type="date" data-field="hes.fecha" value="'+rec.hes.fecha+'"></div></div>' +
@@ -2383,7 +2384,7 @@ function openClientModal(clientId){ editingClientId = clientId || null; renderCl
 function closeClientModal(){ document.getElementById('overlayCliente').classList.remove('show'); editingClientId=null; }
 function renderClientModal(){
   var isEdit = !!editingClientId;
-  var c = isEdit ? getClient(editingClientId) : {rut:'',cliente:'',servicio:'',contacto:'',correo:'',requiereOC:true,activo:true};
+  var c = isEdit ? getClient(editingClientId) : {rut:'',cliente:'',servicio:'',contacto:'',correo:'',requiereOC:true,requiereHES:false,activo:true};
   var modal = document.getElementById('modalCliente');
   modal.innerHTML =
     '<div class="modal-head"><div><h2>'+(isEdit?'Editar cliente':'Nuevo cliente / servicio')+'</h2><p>Datos fijos que se usan en cada periodo.</p></div><button class="modal-close" id="btnCloseClient">&times;</button></div>' +
@@ -2393,6 +2394,7 @@ function renderClientModal(){
         '<div class="field"><label>Servicio</label><input type="text" id="cf_servicio" value="'+esc(c.servicio)+'" placeholder="Ej: GUARDIAS, CASETA…"></div></div>' +
       '<div class="field-grid" style="margin-top:12px;"><div class="field"><label>Contacto</label><input type="text" id="cf_contacto" value="'+esc(c.contacto)+'"></div><div class="field"><label>Correo</label><input type="text" id="cf_correo" value="'+esc(c.correo)+'"></div></div>' +
       '<label class="check-row" style="margin-top:8px;"><input type="checkbox" id="cf_oc" '+(c.requiereOC?'checked':'')+'><span class="ctext">Este cliente exige Orden de Compra</span></label>' +
+      '<label class="check-row" style="margin-top:8px;"><input type="checkbox" id="cf_hes" '+(c.requiereHES?'checked':'')+'><span class="ctext">Este cliente exige ROC / HES</span></label>' +
       '<label class="check-row"><input type="checkbox" id="cf_activo" '+(c.activo!==false?'checked':'')+'><span class="ctext">Cliente activo</span></label>' +
     '</div>' +
     '<div class="modal-foot">'+(isEdit ? '<button class="btn btn-ghost btn-danger-text" id="btnDeleteClient">Eliminar cliente</button>' : '<span></span>')+'<div style="display:flex;gap:8px;"><button class="btn" id="btnCancelClient">Cancelar</button><button class="btn btn-primary" id="btnSaveClient">Guardar</button></div></div>';
@@ -2401,7 +2403,7 @@ function renderClientModal(){
   document.getElementById('btnSaveClient').onclick = function(){
     var cliente = document.getElementById('cf_cliente').value.trim(); var servicio = document.getElementById('cf_servicio').value.trim();
     if(!cliente || !servicio){ toast('Cliente y servicio son obligatorios.', 'err'); return; }
-    var data = { rut:document.getElementById('cf_rut').value.trim(), cliente:cliente, servicio:servicio, contacto:document.getElementById('cf_contacto').value.trim(), correo:document.getElementById('cf_correo').value.trim(), requiereOC:document.getElementById('cf_oc').checked, activo:document.getElementById('cf_activo').checked };
+    var data = { rut:document.getElementById('cf_rut').value.trim(), cliente:cliente, servicio:servicio, contacto:document.getElementById('cf_contacto').value.trim(), correo:document.getElementById('cf_correo').value.trim(), requiereOC:document.getElementById('cf_oc').checked, requiereHES:document.getElementById('cf_hes').checked, activo:document.getElementById('cf_activo').checked };
     if(isEdit){ Object.assign(getClient(editingClientId), data); toast('Cliente actualizado.', 'ok'); }
     else { data.id = uid('c'); state.clients.push(data); toast('Cliente creado.', 'ok'); }
     closeClientModal(); persist();
@@ -2434,9 +2436,10 @@ function renderClientes(){
   var grid = document.getElementById('clientesGrid');
   var sorted = state.clients.slice().sort(function(a,b){ return a.cliente.localeCompare(b.cliente) || a.servicio.localeCompare(b.servicio); });
   grid.innerHTML = sorted.map(function(c){
-    return '<div class="cliente-card" data-id="'+c.id+'"><div><div class="cname">'+esc(c.cliente)+'</div><div class="cservicio">'+esc(c.servicio)+'</div></div><div class="crut">'+esc(c.rut)+'</div><div class="ccontact">'+esc(c.contacto||'—')+(c.correo? '<br>'+esc(c.correo):'')+'</div><div class="toggle-oc"><input type="checkbox" class="chk-oc" '+(c.requiereOC?'checked':'')+'> Exige OC</div><div style="text-align:right;"><button class="btn btn-ghost btn-sm btn-edit-client">Editar</button></div></div>';
+    return '<div class="cliente-card" data-id="'+c.id+'"><div><div class="cname">'+esc(c.cliente)+'</div><div class="cservicio">'+esc(c.servicio)+'</div></div><div class="crut">'+esc(c.rut)+'</div><div class="ccontact">'+esc(c.contacto||'—')+(c.correo? '<br>'+esc(c.correo):'')+'</div><div class="toggle-oc"><input type="checkbox" class="chk-oc" '+(c.requiereOC?'checked':'')+'> Exige OC</div><div class="toggle-oc"><input type="checkbox" class="chk-hes" '+(c.requiereHES?'checked':'')+'> Exige ROC/HES</div><div style="text-align:right;"><button class="btn btn-ghost btn-sm btn-edit-client">Editar</button></div></div>';
   }).join('');
   Array.prototype.forEach.call(grid.querySelectorAll('.chk-oc'), function(chk){ chk.addEventListener('change', function(){ var card=chk.closest('.cliente-card'); getClient(card.getAttribute('data-id')).requiereOC = chk.checked; persist(); }); });
+  Array.prototype.forEach.call(grid.querySelectorAll('.chk-hes'), function(chk){ chk.addEventListener('change', function(){ var card=chk.closest('.cliente-card'); getClient(card.getAttribute('data-id')).requiereHES = chk.checked; persist(); }); });
   Array.prototype.forEach.call(grid.querySelectorAll('.btn-edit-client'), function(btn){ btn.addEventListener('click', function(e){ e.stopPropagation(); openClientModal(btn.closest('.cliente-card').getAttribute('data-id')); }); });
 }
 
