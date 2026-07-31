@@ -1562,7 +1562,7 @@ function renderTechModal(){
     modal.querySelector('.computed').innerHTML = '<span>IVA (19%): '+fmtMoney(iva)+'</span><span>Total: '+fmtMoney(neto+iva)+'</span>';
   });
   var fecfacEl = document.getElementById('tf_fecfac'), vtoEl = document.getElementById('tf_vto');
-  fecfacEl.addEventListener('change', function(){ if(fecfacEl.value && !vtoEl.value) vtoEl.value = addDaysISO(fecfacEl.value, 30); });
+  fecfacEl.addEventListener('change', function(){ if(fecfacEl.value) vtoEl.value = addDaysISO(fecfacEl.value, 30); });
   document.getElementById('btnSaveTech').onclick = function(){
     var wasNew = !editingTechId;
     var id = saveTechFromForm(); if(!id) return;
@@ -2353,7 +2353,7 @@ function wireRecordModalEvents(){
       setPath(rec, field, val);
       var touched = [];
       if(field === 'factura.neto'){ rec.factura.iva = Math.round(rec.factura.neto*0.19); rec.factura.total = rec.factura.neto + rec.factura.iva; }
-      if(field === 'factura.fechaFacturada' && rec.factura.fechaFacturada && !rec.factura.fechaVencimiento){ rec.factura.fechaVencimiento = addDaysISO(rec.factura.fechaFacturada,30); touched.push('factura.fechaVencimiento'); }
+      if(field === 'factura.fechaFacturada' && rec.factura.fechaFacturada){ rec.factura.fechaVencimiento = addDaysISO(rec.factura.fechaFacturada,30); touched.push('factura.fechaVencimiento'); }
       if(field === 'prefactura.enviada' && val && !rec.prefactura.fecha){ rec.prefactura.fecha = todayISO(); touched.push('prefactura.fecha'); }
       if(field === 'oc.recibida' && val && !rec.oc.fecha){ rec.oc.fecha = todayISO(); touched.push('oc.fecha'); }
       if(field === 'hes.recibido' && val && !rec.hes.fecha){ rec.hes.fecha = todayISO(); touched.push('hes.fecha'); }
@@ -2365,7 +2365,7 @@ function wireRecordModalEvents(){
       if(field === 'pago.pagado' && val && !rec.pago.monto){ rec.pago.monto = rec.factura.total; touched.push('pago.monto'); }
       if(field === 'factura2.neto'){ rec.factura2.iva = Math.round(rec.factura2.neto*0.19); rec.factura2.total = rec.factura2.neto + rec.factura2.iva; }
       if(field.indexOf('factura2.')===0 && field!=='factura2.activa'){ if((rec.factura2.numero && String(rec.factura2.numero).trim()) || (Number(rec.factura2.neto)||0)>0){ rec.factura2.activa = true; } }
-      if(field === 'factura2.fechaFacturada' && rec.factura2.fechaFacturada && !rec.factura2.fechaVencimiento){ rec.factura2.fechaVencimiento = addDaysISO(rec.factura2.fechaFacturada,30); touched.push('factura2.fechaVencimiento'); }
+      if(field === 'factura2.fechaFacturada' && rec.factura2.fechaFacturada){ rec.factura2.fechaVencimiento = addDaysISO(rec.factura2.fechaFacturada,30); touched.push('factura2.fechaVencimiento'); }
       if(field === 'factura2.factorizado' && val && !rec.factura2.factoringFecha){ rec.factura2.factoringFecha = todayISO(); touched.push('factura2.factoringFecha'); }
       if(field === 'factura2.pagado' && val && !rec.factura2.pagoFecha){ rec.factura2.pagoFecha = todayISO(); touched.push('factura2.pagoFecha'); }
       syncModalDynamic(touched);
