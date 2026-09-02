@@ -4,8 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Control de Cobranza · Guardias &amp; Servicios</title>
-<link rel="icon" type="image/svg+xml" href="favicon.svg">
-<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" href="logo.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="site.webmanifest">
 <meta name="theme-color" content="#21252D">
@@ -237,7 +236,7 @@ body:not(.theme-dark) ::-webkit-scrollbar-thumb {
   transition: transform .2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .brand-badge:hover { transform: scale(1.05); }
-.brand-badge svg { width: 44px; height: 48px; }
+.brand-badge img, .brand-badge svg { width: 100%; height: 100%; object-fit: contain; }
 .brand h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.03em; }
 .brand p { margin: 1px 0 0; color: var(--slate); font-size: 12px; font-weight: 400; }
 .topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
@@ -1247,15 +1246,15 @@ body:not(.theme-dark) .bar-track { background: rgba(0, 0, 0, 0.07); }
   to { opacity: 1; transform: none; }
 }
 .login-badge {
-  width: 68px;
-  height: 76px;
+  width: 76px;
+  height: 82px;
   margin: 0 auto 18px;
   display: flex;
   align-items: center;
   justify-content: center;
   filter: drop-shadow(0 8px 24px rgba(255, 159, 10, 0.35));
 }
-.login-badge svg { width: 68px; height: 76px; }
+.login-badge img, .login-badge svg { width: 100%; height: 100%; object-fit: contain; }
 .login-card h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.03em; color: #ffffff; margin: 0 0 6px; }
 .login-sub { color: var(--slate); font-size: 13.5px; margin: 0 0 24px; }
 .login-card form { text-align: left; }
@@ -1337,7 +1336,7 @@ body:not(.theme-dark) .bar-track { background: rgba(0, 0, 0, 0.07); }
 <div class="login-screen show" id="loginScreen">
   <div class="login-card">
     <div class="login-badge">
-      <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="loginGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3A404C"/><stop offset="1" stop-color="#21252D"/></linearGradient></defs><path d="M32 3 L57 11 V31 C57 45.5 46.2 56.2 32 61 C17.8 56.2 7 45.5 7 31 V11 Z" fill="url(#loginGrad)"/><g fill="#F7C31B"><rect x="21" y="17" width="22" height="7.5"/><rect x="21" y="17" width="7.5" height="18"/><rect x="21" y="27.5" width="22" height="7.5"/><rect x="35.5" y="27.5" width="7.5" height="21"/><rect x="21" y="41" width="22" height="7.5"/></g></svg>
+      <img src="logo.png" alt="Logo">
     </div>
     <h2>Control de Cobranza</h2>
     <p class="login-sub">Ingresa con tu usuario y clave</p>
@@ -1362,7 +1361,7 @@ body:not(.theme-dark) .bar-track { background: rgba(0, 0, 0, 0.07); }
   <div class="topbar">
     <div class="brand">
       <div class="brand-badge">
-        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="brandGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3A404C"/><stop offset="1" stop-color="#21252D"/></linearGradient></defs><path d="M32 3 L57 11 V31 C57 45.5 46.2 56.2 32 61 C17.8 56.2 7 45.5 7 31 V11 Z" fill="url(#brandGrad)"/><g fill="#F7C31B"><rect x="21" y="17" width="22" height="7.5"/><rect x="21" y="17" width="7.5" height="18"/><rect x="21" y="27.5" width="22" height="7.5"/><rect x="35.5" y="27.5" width="7.5" height="21"/><rect x="21" y="41" width="22" height="7.5"/></g></svg>
+        <img src="logo.png" alt="Logo">
       </div>
       <div>
         <h1>Control de Cobranza</h1>
