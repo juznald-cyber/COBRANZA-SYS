@@ -1030,7 +1030,19 @@ body:not(.theme-dark) .matrix tbody td.sticky-col {
   font-family: "SF Mono", monospace;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
-.mc-amount { font-size: 10.5px; color: var(--slate-soft); font-family: "SF Mono", monospace; }
+.mc-fac {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  font-family: "SF Mono", monospace;
+  margin: 2px auto 1px;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+.mc-amount { font-size: 10.5px; color: var(--slate-soft); font-family: "SF Mono", monospace; line-height: 1.2; }
 .matrix-empty-cell { color: var(--line-strong); font-size: 16px; }
 .matrix tfoot td {
   background: rgba(30, 30, 34, 0.9);
@@ -2075,6 +2087,22 @@ function segFactura(rec){
   return null;
 }
 function recTotalFacturado(rec){ if(rec.sinServicio) return 0; var t = rec.factura.emitida ? (rec.factura.total||0) : 0; var s=segFactura(rec); if(s) t += (s.total||0); return t; }
+function recFacturaNums(rec){
+  if(!rec || rec.sinServicio) return '';
+  if(rec.cubierta && rec.cubierta.activa && rec.cubierta.factura){
+    return 'F: ' + esc(rec.cubierta.factura);
+  }
+  var nums = [];
+  if(rec.factura && rec.factura.numero && String(rec.factura.numero).trim()){
+    nums.push(String(rec.factura.numero).trim());
+  }
+  var seg = segFactura(rec);
+  if(seg && seg.numero && String(seg.numero).trim()){
+    nums.push(String(seg.numero).trim());
+  }
+  if(nums.length === 0) return '';
+  return 'F: ' + nums.map(esc).join('+');
+}
 function invoiceLines(rec){
   var lines=[];
   if(rec.sinServicio) return lines; // mes sin servicio: no genera líneas ni montos
@@ -3057,8 +3085,9 @@ function renderMatrix(){
       var st = computeStatus(rec, client); var color = STATUS_DOT_COLOR[st];
       var totFac = recTotalFacturado(rec);
       var amount = totFac ? fmtMoney(totFac) : '';
+      var facNums = recFacturaNums(rec);
       totalsByPeriod[p].facturado += totFac;
-      return '<td class="matrix-cell" data-client="'+client.id+'" data-periodo="'+p+'" title="'+STATUS_DEFS[st].label+'"><div class="mc-dot" style="background:'+color+';">'+STATUS_SHORT[st]+'</div>'+(amount ? '<div class="mc-amount">'+amount+'</div>' : '')+'</td>';
+      return '<td class="matrix-cell" data-client="'+client.id+'" data-periodo="'+p+'" title="'+STATUS_DEFS[st].label+(facNums?' · '+facNums:'')+'"><div class="mc-dot" style="background:'+color+';">'+STATUS_SHORT[st]+'</div>'+(facNums ? '<div class="mc-fac">'+facNums+'</div>' : '')+(amount ? '<div class="mc-amount">'+amount+'</div>' : '')+'</td>';
     }).join('');
     return '<tr><td class="sticky-col row-label"><strong>'+esc(client.cliente)+'</strong><span>'+esc(client.servicio)+'</span></td>'+cells+'</tr>';
   }).join('');
