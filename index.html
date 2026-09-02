@@ -1600,6 +1600,20 @@ function fmtMoney(n){
   n = Number(n)||0;
   return '$' + Math.round(n).toLocaleString('es-CL');
 }
+function formatThousands(n){
+  if(n === null || n === undefined || n === '') return '';
+  var raw = String(n).replace(/\D/g, '');
+  if(!raw) return '';
+  return Number(raw).toLocaleString('es-CL');
+}
+function parseThousands(str){
+  if(str === null || str === undefined || str === '') return 0;
+  var raw = String(str).replace(/\D/g, '');
+  return parseInt(raw, 10) || 0;
+}
+function isMoneyField(f){
+  return ['factura.neto', 'factoring.monto', 'pago.monto', 'factura2.neto'].indexOf(f) !== -1;
+}
 function fmtDate(iso){
   if(!iso) return '—';
   var d = new Date(iso+'T00:00:00');
@@ -2387,7 +2401,7 @@ function renderTechModal(){
         '<div class="field"><label>Vencimiento (30 días)</label><input type="date" id="tf_vto" value="'+esc(t.fechaVencimiento||'')+'"></div>' +
         '<div class="field"><label>Orden de Compra</label><input type="text" id="tf_oc" value="'+esc(t.oc)+'"></div>' +
         '<div class="field"><label>HES (si corresponde)</label><input type="text" id="tf_hes" value="'+esc(t.hes)+'"></div>' +
-        '<div class="field"><label>Monto neto</label><input type="number" step="1" id="tf_neto" value="'+(t.neto||0)+'"></div>' +
+        '<div class="field"><label>Monto neto</label><input type="text" inputmode="numeric" class="money-input" id="tf_neto" value="'+(t.neto ? formatThousands(t.neto) : '')+'" placeholder="0"></div>' +
       '</div>' +
       '<div class="computed" style="margin-top:10px;"><span>IVA (19%): '+fmtMoney(t.iva)+'</span><span>Total: '+fmtMoney(t.total)+'</span></div>' +
       '<div class="field" style="margin-top:12px;"><label>Estado</label><select id="tf_estado">'+estadoOpts+'</select></div>' +
@@ -2415,7 +2429,17 @@ function renderTechModal(){
   document.getElementById('btnCancelTech').onclick = closeTechModal;
   var netoEl = document.getElementById('tf_neto');
   netoEl.addEventListener('input', function(){
-    var neto = parseFloat(netoEl.value)||0; var iva=Math.round(neto*0.19);
+    var prevVal = netoEl.value;
+    var prevCursor = netoEl.selectionStart;
+    var neto = parseThousands(netoEl.value);
+    var formatted = neto ? formatThousands(neto) : (netoEl.value === '' ? '' : '0');
+    netoEl.value = formatted;
+    if(prevCursor !== null){
+      var diff = formatted.length - prevVal.length;
+      var nextCursor = Math.max(0, prevCursor + diff);
+      try { netoEl.setSelectionRange(nextCursor, nextCursor); } catch(e){}
+    }
+    var iva = Math.round(neto*0.19);
     modal.querySelector('.computed').innerHTML = '<span>IVA (19%): '+fmtMoney(iva)+'</span><span>Total: '+fmtMoney(neto+iva)+'</span>';
   });
   var fecfacEl = document.getElementById('tf_fecfac'), vtoEl = document.getElementById('tf_vto');
@@ -2436,7 +2460,7 @@ function renderTechModal(){
 }
 /* Lee el formulario de tecnología y guarda (crea o actualiza). Devuelve el id o null. */
 function readTechData(){
-  var neto = parseFloat(document.getElementById('tf_neto').value)||0;
+  var neto = parseThousands(document.getElementById('tf_neto').value);
   return {
     periodo: document.getElementById('tf_periodo').value,
     rut: document.getElementById('tf_rut').value.trim(),
@@ -3129,7 +3153,7 @@ function renderRecordModal(){
         '<div class="field-grid"><div class="field"><label>N° de factura</label><input type="text" data-field="factura.numero" value="'+esc(rec.factura.numero)+'"></div>' +
           '<div class="field"><label>Fecha facturada</label><input type="date" data-field="factura.fechaFacturada" value="'+rec.factura.fechaFacturada+'"></div>' +
           '<div class="field"><label>Vencimiento (30 días)</label><input type="date" data-field="factura.fechaVencimiento" value="'+rec.factura.fechaVencimiento+'"></div>' +
-          '<div class="field"><label>Monto neto</label><input type="number" step="1" data-field="factura.neto" value="'+rec.factura.neto+'"></div></div>' +
+          '<div class="field"><label>Monto neto</label><input type="text" inputmode="numeric" class="money-input" data-field="factura.neto" value="'+(rec.factura.neto ? formatThousands(rec.factura.neto) : '')+'" placeholder="0"></div></div>' +
         '<div class="computed" style="margin-top:10px;"><span>IVA (19%): '+fmtMoney(rec.factura.iva)+'</span><span>Total: '+fmtMoney(rec.factura.total)+'</span></div>' +
         '<label class="check-row" style="margin-top:6px;"><input type="checkbox" data-field="factura.enviadaSII" '+(rec.factura.enviadaSII?'checked':'')+'><span class="ctext">Enviada al Servicio de Impuestos Internos</span></label>' +
         '<div class="field-grid"><div class="field"><label>Fecha de envío al SII</label><input type="date" data-field="factura.fechaEnvioSII" value="'+rec.factura.fechaEnvioSII+'"></div></div>' +
@@ -3146,10 +3170,10 @@ function renderRecordModal(){
         '<div><label class="check-row"><input type="checkbox" data-field="factoring.factorizado" '+(rec.factoring.factorizado?'checked':'')+'><span class="ctext">Factura factorizada</span><span class="csub"> — se vendió a una entidad financiera</span></label>' +
           '<div class="field-grid"><div class="field"><label>Entidad financiera <span style="font-weight:400;color:var(--slate-soft);">(escribe para buscar)</span></label><input type="text" list="entidadesDatalist" data-field="factoring.entidad" value="'+esc(rec.factoring.entidad)+'" placeholder="Escribe o elige de la lista…" autocomplete="off"></div>' +
             '<div class="field"><label>Fecha de factoring</label><input type="date" data-field="factoring.fecha" value="'+rec.factoring.fecha+'"></div>' +
-            '<div class="field"><label>Monto factorizado</label><input type="number" step="1" data-field="factoring.monto" value="'+rec.factoring.monto+'"></div></div></div>' +
+            '<div class="field"><label>Monto factorizado</label><input type="text" inputmode="numeric" class="money-input" data-field="factoring.monto" value="'+(rec.factoring.monto ? formatThousands(rec.factoring.monto) : '')+'" placeholder="0"></div></div></div>' +
         '<div><label class="check-row"><input type="checkbox" data-field="pago.pagado" '+(rec.pago.pagado?'checked':'')+'><span class="ctext">Pagado directamente</span><span class="csub"> — el cliente pagó sin factoring</span></label>' +
           '<div class="field-grid"><div class="field"><label>Fecha de pago</label><input type="date" data-field="pago.fecha" value="'+rec.pago.fecha+'"></div>' +
-            '<div class="field"><label>Monto pagado</label><input type="number" step="1" data-field="pago.monto" value="'+rec.pago.monto+'"></div></div></div>' +
+            '<div class="field"><label>Monto pagado</label><input type="text" inputmode="numeric" class="money-input" data-field="pago.monto" value="'+(rec.pago.monto ? formatThousands(rec.pago.monto) : '')+'" placeholder="0"></div></div></div>' +
       '</div></div></div>' +
       '<div class="section"><div class="section-head"><h4><span class="section-num">6</span>Segunda factura (anticipo / saldo)</h4></div><div class="section-body">' +
         '<label class="check-row"><input type="checkbox" data-field="factura2.activa" '+(rec.factura2.activa?'checked':'')+'><span class="ctext">Agregar una segunda factura</span><span class="csub"> — por ejemplo un anticipo y luego el saldo</span></label>' +
@@ -3158,7 +3182,7 @@ function renderRecordModal(){
           '<div class="field"><label>N° de factura</label><input type="text" data-field="factura2.numero" value="'+esc(rec.factura2.numero)+'"></div>' +
           '<div class="field"><label>Fecha facturada</label><input type="date" data-field="factura2.fechaFacturada" value="'+rec.factura2.fechaFacturada+'"></div>' +
           '<div class="field"><label>Vencimiento (30 días)</label><input type="date" data-field="factura2.fechaVencimiento" value="'+rec.factura2.fechaVencimiento+'"></div>' +
-          '<div class="field"><label>Monto neto</label><input type="number" step="1" data-field="factura2.neto" value="'+rec.factura2.neto+'"></div>' +
+          '<div class="field"><label>Monto neto</label><input type="text" inputmode="numeric" class="money-input" data-field="factura2.neto" value="'+(rec.factura2.neto ? formatThousands(rec.factura2.neto) : '')+'" placeholder="0"></div>' +
           '<div class="field"><label>N° Orden de Compra</label><input type="text" data-field="factura2.oc" value="'+esc(rec.factura2.oc||'')+'"></div>' +
           '<div class="field"><label>N° HES / ROC</label><input type="text" data-field="factura2.hes" value="'+esc(rec.factura2.hes||'')+'"></div>' +
         '</div>' +
@@ -3205,6 +3229,18 @@ function wireRecordModalEvents(){
     el.addEventListener(evt, function(){
       var rec = state.records[editingRecordKey]; var field = el.getAttribute('data-field'); var val;
       if(el.type === 'checkbox') val = el.checked;
+      else if(isMoneyField(field) || el.classList.contains('money-input')){
+        var prevVal = el.value;
+        var prevCursor = el.selectionStart;
+        val = parseThousands(el.value);
+        var formatted = val ? formatThousands(val) : (el.value === '' ? '' : '0');
+        el.value = formatted;
+        if(prevCursor !== null && el.type === 'text'){
+          var diff = formatted.length - prevVal.length;
+          var nextCursor = Math.max(0, prevCursor + diff);
+          try { el.setSelectionRange(nextCursor, nextCursor); } catch(e){}
+        }
+      }
       else if(el.type === 'number') val = (el.value === '' ? 0 : parseFloat(el.value) || 0);
       else val = el.value;
       setPath(rec, field, val);
@@ -3237,7 +3273,13 @@ function syncModalDynamic(touchedFields){
   var computedEl = document.querySelector('#modalRegistro .computed'); if(computedEl) computedEl.innerHTML = '<span>IVA (19%): '+fmtMoney(rec.factura.iva)+'</span><span>Total: '+fmtMoney(rec.factura.total)+'</span>';
   var computed2El = document.querySelector('#modalRegistro .computed2'); if(computed2El && rec.factura2) computed2El.innerHTML = '<span>IVA (19%): '+fmtMoney(rec.factura2.iva)+'</span><span>Total: '+fmtMoney(rec.factura2.total)+'</span>';
   var badgeEl = document.querySelector('#modalRegistro .modal-foot .badge'); if(badgeEl){ badgeEl.className = 'badge ' + STATUS_DEFS[cp.status].css; badgeEl.textContent = STATUS_DEFS[cp.status].label; }
-  (touchedFields || []).forEach(function(f){ var el = document.querySelector('#modalRegistro [data-field="'+f+'"]'); if(el && document.activeElement !== el) el.value = getPath(rec, f); });
+  (touchedFields || []).forEach(function(f){
+    var el = document.querySelector('#modalRegistro [data-field="'+f+'"]');
+    if(el && document.activeElement !== el){
+      var v = getPath(rec, f);
+      el.value = (isMoneyField(f) || el.classList.contains('money-input')) ? (v ? formatThousands(v) : '') : v;
+    }
+  });
 }
 
 /* ---------- Modal: cliente ---------- */
