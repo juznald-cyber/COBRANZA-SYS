@@ -18,6 +18,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+if(window['pdfjsLib']){
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+</script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -1675,6 +1681,211 @@ function esc(s){
   return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
 }
 
+/* ---------- Lector y Extractor Inteligente de Facturas PDF (DTE) ---------- */
+async function extractTextFromPDF(fileOrBuffer){
+  if(typeof pdfjsLib === 'undefined'){
+    throw new Error('El lector PDF aún no está listo. Por favor espera unos segundos o recarga.');
+  }
+  var arrayBuffer;
+  if(fileOrBuffer instanceof ArrayBuffer){
+    arrayBuffer = fileOrBuffer;
+  } else if(fileOrBuffer instanceof Blob || fileOrBuffer instanceof File){
+    arrayBuffer = await fileOrBuffer.arrayBuffer();
+  } else {
+    throw new Error('Formato de archivo no compatible.');
+  }
+  var loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  var pdf = await loadingTask.promise;
+  var fullText = '';
+  for(var i = 1; i <= pdf.numPages; i++){
+    var page = await pdf.getPage(i);
+    var tokenized = await page.getTextContent();
+    var pageText = tokenized.items.map(function(item){ return item.str; }).join(' ');
+    fullText += pageText + '\n';
+  }
+  return fullText;
+}
+
+function parseInvoiceMoney(str){
+  if(!str) return 0;
+  str = String(str).replace(/[\$\s]/g, '');
+  if(/,\d{1,2}$/.test(str)){
+    str = str.replace(/,\d{1,2}$/, '');
+  } else if(/\.\d{2}$/.test(str) && str.indexOf(',') === -1 && (str.match(/\./g)||[]).length === 1){
+    str = str.replace(/\.\d{2}$/, '');
+  }
+  var clean = str.replace(/\D/g, '');
+  return parseInt(clean, 10) || 0;
+}
+
+function extractInvoiceDate(rawText){
+  var MONTHS = {
+    enero:'01', feb:'02', febrero:'02', mar:'03', marzo:'03',
+    abr:'04', abril:'04', may:'05', mayo:'05', jun:'06', junio:'06',
+    jul:'07', julio:'07', ago:'08', agosto:'08', sep:'09', sept:'09',
+    septiembre:'09', setiembre:'09', oct:'10', octubre:'10',
+    nov:'11', noviembre:'11', dic:'12', diciembre:'12'
+  };
+  var mText = rawText.match(/(?:Fecha\s*(?:de\s*)?Emisi[oó]n|Fecha\s*Docto|Fecha\s*Factura|Fecha|Santiago|Concepci[oó]n|Valpara[ií]so)[^\d\n]{0,30}(\d{1,2})\s*(?:de|\/|-)\s*([a-zA-Záéíóúñ]+)\s*(?:de|del|\/|-)?\s*(\d{4})/i);
+  if(mText){
+    var d = String(mText[1]).padStart(2, '0');
+    var mName = mText[2].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    var y = mText[3];
+    var mm = MONTHS[mName];
+    if(mm) return y + '-' + mm + '-' + d;
+  }
+  var mDigits = rawText.match(/(?:Fecha\s*(?:de\s*)?Emisi[oó]n|Fecha\s*Docto|Fecha\s*Factura|Fecha|Emisi[oó]n)[^\d\n]{0,25}(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/i);
+  if(mDigits){
+    var d = String(mDigits[1]).padStart(2, '0');
+    var m = String(mDigits[2]).padStart(2, '0');
+    var y = mDigits[3];
+    if(parseInt(m, 10) >= 1 && parseInt(m, 10) <= 12 && parseInt(d, 10) >= 1 && parseInt(d, 10) <= 31){
+      return y + '-' + m + '-' + d;
+    }
+  }
+  var mISO = rawText.match(/(?:Fecha\s*(?:de\s*)?Emisi[oó]n|Fecha\s*Docto|Fecha\s*Factura|Fecha)[^\d\n]{0,25}(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/i);
+  if(mISO){
+    var y = mISO[1];
+    var m = String(mISO[2]).padStart(2, '0');
+    var d = String(mISO[3]).padStart(2, '0');
+    return y + '-' + m + '-' + d;
+  }
+  var mStandalone = rawText.match(/(\d{1,2})\s+de\s+([a-zA-Záéíóúñ]+)\s+(?:del?\s+)?(\d{4})/i);
+  if(mStandalone){
+    var d = String(mStandalone[1]).padStart(2, '0');
+    var mName = mStandalone[2].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    var y = mStandalone[3];
+    var mm = MONTHS[mName];
+    if(mm) return y + '-' + mm + '-' + d;
+  }
+  return '';
+}
+
+function parseInvoiceText(rawText){
+  if(!rawText) return null;
+  var norm = rawText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+
+  // 1. Número de Factura
+  var numero = '';
+  var numM = rawText.match(/(?:FACTURA\s+(?:ELECTR[OÓ]NICA|AFECTA|EXENTA|NO\s+AFECTA)?[^\d\n]{0,40}N[°ºo\.\s:]*|FOLIO\s*(?:N[°ºo\.\s:]*)?|N[°º]\s*[:\.]?\s*)(\d{1,10})/i);
+  if(numM && numM[1] && parseInt(numM[1],10) > 0){
+    numero = numM[1].trim();
+  } else {
+    var alt = rawText.match(/R\.?U\.?T\.?[^\n]{0,60}?\n?[^\n]{0,60}?FACTURA[^\n]{0,60}?\n?[^\n]{0,60}?N[°ºo\.\s:]*(\d{1,10})/i);
+    if(alt && alt[1] && parseInt(alt[1],10) > 0){
+      numero = alt[1].trim();
+    } else {
+      var simple = rawText.match(/N[°º]\s*[:\.]?\s*(\d{3,10})/i);
+      if(simple && simple[1]) numero = simple[1].trim();
+    }
+  }
+
+  // 2. Fecha
+  var fecha = extractInvoiceDate(rawText);
+
+  // 3. Monto Neto
+  var neto = 0;
+  var netoM = rawText.match(/(?:MONTO\s+NETO|TOTAL\s+NETO|SUB\s*TOTAL|VALOR\s+NETO|NETO\s*AFECTO|NETO)[^\d\$\n]{0,25}\$?\s*([\d\.\,]{3,})/i);
+  if(netoM){
+    neto = parseInvoiceMoney(netoM[1]);
+  }
+  if(!neto){
+    var mTotal = rawText.match(/(?:TOTAL\s+A\s+PAGAR|TOTAL\s+FACTURA|TOTAL)[^\d\$\n]{0,25}\$?\s*([\d\.\,]{3,})/i);
+    if(mTotal){
+      var tot = parseInvoiceMoney(mTotal[1]);
+      if(tot > 0) neto = Math.round(tot / 1.19);
+    }
+  }
+  if(!neto){
+    var mIva = rawText.match(/(?:I\.?V\.?A\.?\s*(?:\(?19%\)?)?)[^\d\$\n]{0,25}\$?\s*([\d\.\,]{3,})/i);
+    if(mIva){
+      var iva = parseInvoiceMoney(mIva[1]);
+      if(iva > 0) neto = Math.round(iva / 0.19);
+    }
+  }
+
+  // 4. Verificación SII: documento válido si no contiene frases de "documento no válido"
+  var noValidoPhrases = [
+    'DOCUMENTO NO VALIDO',
+    'NO VALIDO PARA EFECTOS TRIBUTARIOS',
+    'NO ES VALIDO PARA EFECTOS TRIBUTARIOS',
+    'DOCUMENTO NO ES VALIDO',
+    'NO VALIDO COMO FACTURA',
+    'VISTA PREVIA',
+    'BORRADOR',
+    'MUESTRA SIN VALOR'
+  ];
+  var esValidoSII = true;
+  for(var i = 0; i < noValidoPhrases.length; i++){
+    if(norm.indexOf(noValidoPhrases[i]) !== -1){
+      esValidoSII = false;
+      break;
+    }
+  }
+
+  return {
+    numero: numero,
+    fecha: fecha,
+    neto: neto,
+    esValidoSII: esValidoSII,
+    rawText: rawText
+  };
+}
+
+async function procesarFacturaPDF(file, recKey){
+  if(!file) return null;
+  try{
+    toast('Analizando y leyendo factura PDF…', '');
+    var text = await extractTextFromPDF(file);
+    var data = parseInvoiceText(text);
+    if(!data){
+      toast('No se pudo interpretar el archivo PDF.', 'err');
+      return null;
+    }
+    var rec = state.records[recKey || editingRecordKey];
+    if(rec){
+      var touched = [];
+      rec.factura.emitida = true;
+      touched.push('factura.emitida');
+
+      if(data.numero){
+        rec.factura.numero = data.numero;
+        touched.push('factura.numero');
+      }
+      if(data.fecha){
+        rec.factura.fechaFacturada = data.fecha;
+        rec.factura.fechaVencimiento = addDaysISO(data.fecha, 30);
+        touched.push('factura.fechaFacturada', 'factura.fechaVencimiento');
+      }
+      if(data.neto > 0){
+        rec.factura.neto = data.neto;
+        rec.factura.iva = Math.round(data.neto * 0.19);
+        rec.factura.total = data.neto + rec.factura.iva;
+        touched.push('factura.neto');
+      }
+      if(data.esValidoSII){
+        rec.factura.enviadaSII = true;
+        rec.factura.fechaEnvioSII = data.fecha || todayISO();
+        touched.push('factura.enviadaSII', 'factura.fechaEnvioSII');
+      } else {
+        rec.factura.enviadaSII = false;
+        touched.push('factura.enviadaSII');
+      }
+
+      syncModalDynamic(touched);
+      persist();
+
+      var msg = '✓ Factura leída: ' + (data.numero ? ('N° ' + data.numero) : '') + (data.neto ? (' · $' + formatThousands(data.neto) + ' neto') : '') + (data.esValidoSII ? ' · Enviada al SII' : ' · (No tributaria)');
+      toast(msg, 'ok');
+    }
+    return data;
+  }catch(err){
+    console.error(err);
+    toast('Error al leer el archivo PDF: ' + (err.message || err), 'err');
+    return null;
+  }
+}
+
 /* ---------- Datos por defecto ---------- */
 var DEFAULT_CLIENTS = [{"id": "c1", "rut": "81201000-K", "cliente": "CENCOSUD SISA", "servicio": "GUARDIAS", "contacto": "ROSA CAMPOS", "correo": "rosa.campos@santaisabel.cl", "requiereOC": true, "activo": true}, {"id": "c2", "rut": "81201000-K", "cliente": "CENCOSUD SISA", "servicio": "REFUERZOS", "contacto": "ROSA CAMPOS", "correo": "rosa.campos@santaisabel.cl", "requiereOC": true, "activo": true}, {"id": "c3", "rut": "81201000-K", "cliente": "CENCOSUD JUMBO", "servicio": "GUARDIAS", "contacto": "ROSA CAMPOS", "correo": "rosa.campos@santaisabel.cl", "requiereOC": true, "activo": true}, {"id": "c4", "rut": "81201000-K", "cliente": "CENCOSUD JUMBO", "servicio": "CUSTODIA", "contacto": "DORIS BENAVIDES", "correo": "doriserika.benavidesquiroz@jumbo.cl", "requiereOC": true, "activo": true}, {"id": "c5", "rut": "81201000-K", "cliente": "CENCOSUD JUMBO", "servicio": "CONTROL CAMIONES", "contacto": "DORIS BENAVIDES", "correo": "doriserika.benavidesquiroz@jumbo.cl", "requiereOC": true, "activo": true}, {"id": "c6", "rut": "81201000-K", "cliente": "CENCOSUD JUMBO", "servicio": "RECICLAJE", "contacto": "DORIS BENAVIDES", "correo": "doriserika.benavidesquiroz@jumbo.cl", "requiereOC": true, "activo": true}, {"id": "c7", "rut": "81201000-K", "cliente": "CENCOSUD JUMBO", "servicio": "CASETA", "contacto": "ROSA CAMPOS", "correo": "rosa.campos@santaisabel.cl", "requiereOC": true, "activo": true}, {"id": "c8", "rut": "76134941-4", "cliente": "WALMART LIDER", "servicio": "GUARDIAS", "contacto": "HECTOR SALINAS / FRANCISCO JERIA", "correo": "hector.salinas@walmart.com", "requiereOC": true, "activo": true}, {"id": "c9", "rut": "76134946-5", "cliente": "WALMART EXPRESS", "servicio": "GUARDIAS", "contacto": "HECTOR SALINAS / FRANCISCO JERIA", "correo": "hector.salinas@walmart.com", "requiereOC": true, "activo": true}, {"id": "c10", "rut": "76833720-9", "cliente": "WALMART SBA", "servicio": "GUARDIAS", "contacto": "HECTOR SALINAS / FRANCISCO JERIA", "correo": "hector.salinas@walmart.com", "requiereOC": true, "activo": true}, {"id": "c11", "rut": "96562520-8", "cliente": "SERMOB LIMITADA", "servicio": "GUARDIAS", "contacto": "HECTOR SALINAS / FRANCISCO JERIA", "correo": "hector.salinas@walmart.com", "requiereOC": true, "activo": true}, {"id": "c12", "rut": "76134941-4", "cliente": "WALMART LIDER", "servicio": "SPOT", "contacto": "HECTOR SALINAS / FRANCISCO JERIA", "correo": "hector.salinas@walmart.com", "requiereOC": true, "activo": true}, {"id": "c13", "rut": "76134946-5", "cliente": "WALMART EXPRESS", "servicio": "SPOT", "contacto": "HECTOR SALINAS / FRANCISCO JERIA", "correo": "hector.salinas@walmart.com", "requiereOC": true, "activo": true}, {"id": "c14", "rut": "76833720-9", "cliente": "WALMART SBA", "servicio": "SPOT", "contacto": "HECTOR SALINAS / FRANCISCO JERIA", "correo": "hector.salinas@walmart.com", "requiereOC": true, "activo": true}, {"id": "c15", "rut": "81201000-K", "cliente": "CENCOSUD PARIS", "servicio": "GUARDIAS", "contacto": "EZEQUIEL BLANCH", "correo": "exequiel.blanch@paris.cl", "requiereOC": true, "activo": true}, {"id": "c16", "rut": "81201000-K", "cliente": "CENCOSUD PARIS", "servicio": "REFUERZOS", "contacto": "EZEQUIEL BLANCH", "correo": "exequiel.blanch@paris.cl", "requiereOC": true, "activo": true}, {"id": "c17", "rut": "76433310-1", "cliente": "PARKING SHOPPING", "servicio": "CASETA", "contacto": "JOCELYN JARA", "correo": "jocelyn.jara@cencosud.cl", "requiereOC": true, "activo": true}, {"id": "c18", "rut": "76951464-3", "cliente": "CENCOSUD INMOBILIARIO", "servicio": "GUARDIAS", "contacto": "JOCELYN JARA", "correo": "jocelyn.jara@cencosud.cl", "requiereOC": true, "activo": true}, {"id": "c19", "rut": "78408990-8", "cliente": "ADMINISTRADORA DE CENTROS COMERCIALES CENCOSUD SPA", "servicio": "GUARDIAS", "contacto": "ESTO LO VE DIRECTAMENTE OPERACIONES", "correo": "", "requiereOC": true, "activo": true}, {"id": "c20", "rut": "76166801-3", "cliente": "ADMINISTRADORA TMO S.A.", "servicio": "GUARDIAS", "contacto": "ESTO LO VE DIRECTAMENTE OPERACIONES", "correo": "", "requiereOC": true, "activo": true}, {"id": "c21", "rut": "96930440-6", "cliente": "KEYLOGISTICS LRI", "servicio": "GUARDIAS", "contacto": "ROSANNY MELENDEZ", "correo": "javier.varela@nazar.cl", "requiereOC": true, "activo": true}, {"id": "c22", "rut": "96930440-6", "cliente": "KEYLOGISTICS CDC", "servicio": "GUARDIAS", "contacto": "ROSANNY MELENDEZ", "correo": "javier.varela@nazar.cl", "requiereOC": true, "activo": true}, {"id": "c23", "rut": "79582220-8", "cliente": "TRANSPORTES NAZAR", "servicio": "GUARDIAS", "contacto": "JAVIER VARELA", "correo": "javier.varela@nazar.cl", "requiereOC": true, "activo": true}, {"id": "c24", "rut": "79582220-8", "cliente": "TRANSPORTES NAZAR TENO", "servicio": "GUARDIAS", "contacto": "JAVIER VARELA", "correo": "javier.varela@nazar.cl", "requiereOC": true, "activo": true}, {"id": "c25", "rut": "79582220-8", "cliente": "TRANSPORTES NAZAR", "servicio": "CASETA", "contacto": "JAVIER VARELA", "correo": "javier.varela@nazar.cl", "requiereOC": true, "activo": true}, {"id": "c26", "rut": "77201840-1", "cliente": "CARLOS HERRERA ACERO (CERRILLOS)", "servicio": "GUARDIAS", "contacto": "GUILLERMO RAMIREz", "correo": "gramirez@carlosherrera.cl", "requiereOC": true, "activo": true}, {"id": "c27", "rut": "77201840-1", "cliente": "CARLOS HERRERA ACERO (CONCHALI)", "servicio": "GUARDIAS", "contacto": "GUILLERMO RAMIREz", "correo": "gramirez@carlosherrera.cl", "requiereOC": true, "activo": true}, {"id": "c28", "rut": "77201840-1", "cliente": "CARLOS HERRERA ACERO (ENEA)", "servicio": "GUARDIAS", "contacto": "GUILLERMO RAMIREz", "correo": "gramirez@carlosherrera.cl", "requiereOC": true, "activo": true}, {"id": "c29", "rut": "77201840-1", "cliente": "CARLOS HERRERA ACERO (LA REINA)", "servicio": "GUARDIAS", "contacto": "GUILLERMO RAMIREz", "correo": "gramirez@carlosherrera.cl", "requiereOC": true, "activo": true}, {"id": "c30", "rut": "77201840-1", "cliente": "CARLOS HERRERA ACERO (STA. ROSA)", "servicio": "GUARDIAS", "contacto": "GUILLERMO RAMIREz", "correo": "gramirez@carlosherrera.cl", "requiereOC": true, "activo": true}, {"id": "c31", "rut": "77201840-1", "cliente": "CARLOS HERRERA ACERO (PTO MONTT)", "servicio": "GUARDIAS", "contacto": "GUILLERMO RAMIREz", "correo": "gramirez@carlosherrera.cl", "requiereOC": true, "activo": true}, {"id": "c32", "rut": "96986070-8", "cliente": "PARACLINICS", "servicio": "GUARDIAS", "contacto": "BETSY BALTIERRA", "correo": "bbaltierra@paraclinics.cl", "requiereOC": true, "activo": true}, {"id": "c33", "rut": "96607990-8", "cliente": "HIDRONOR", "servicio": "GUARDIAS", "contacto": "MARCELA MALDONADO", "correo": "marcela.maldonado@hidronor.cl", "requiereOC": true, "activo": true}, {"id": "c34", "rut": "59061540-4", "cliente": "UNITED AIRLINES", "servicio": "GUARDIAS", "contacto": "DIANA SHOMALY", "correo": "diana.shomaly@united.com", "requiereOC": true, "activo": true}, {"id": "c35", "rut": "76513688-1", "cliente": "CARLS JR NUEVA PROVIDENCIA", "servicio": "GUARDIAS", "contacto": "KATHERINE BASCUR / ESTEBAN REINOSO", "correo": "katherine.bascur@corachi.cl", "requiereOC": true, "activo": true}, {"id": "c36", "rut": "76513688-1", "cliente": "CORACHI MALL ARAUCO MAIPU", "servicio": "GUARDIAS", "contacto": "KATHERINE BASCUR / ESTEBAN REINOSO", "correo": "katherine.bascur@corachi.cl", "requiereOC": true, "activo": true}, {"id": "c37", "rut": "76513688-1", "cliente": "CORACHI MALL VESPUCIO", "servicio": "GUARDIAS", "contacto": "KATHERINE BASCUR / ESTEBAN REINOSO", "correo": "katherine.bascur@corachi.cl", "requiereOC": true, "activo": true}, {"id": "c38", "rut": "76513688-1", "cliente": "CORACHI MALL VESPUCIO 2", "servicio": "GUARDIAS", "contacto": "KATHERINE BASCUR / ESTEBAN REINOSO", "correo": "katherine.bascur@corachi.cl", "requiereOC": true, "activo": true}, {"id": "c39", "rut": "76135018-8", "cliente": "QLF LABS", "servicio": "GUARDIAS", "contacto": "RONALD ALMENDRAS", "correo": "ralmendras@qualified.cl", "requiereOC": true, "activo": true}, {"id": "c40", "rut": "56084410-7", "cliente": "EDIFICIOS PALMAS DE REÑACA", "servicio": "GUARDIAS", "contacto": "FELIPE ALTAMIRANO / CAROLINA LOPEZ", "correo": "palmasderenaca@gmail.com", "requiereOC": true, "activo": true}, {"id": "c41", "rut": "76549580-6", "cliente": "ENZO LEPORI Y ASOCIADOS SPA", "servicio": "GUARDIAS", "contacto": "FRANCO LEPORI", "correo": "FLEPORI@OBWFRANCO.COM", "requiereOC": true, "activo": true}, {"id": "c42", "rut": "92091000-9", "cliente": "UNILEVER", "servicio": "GUARDIAS", "contacto": "SERGIO LUARDO", "correo": "SERGIO.LUARDO@UNILEVER.COM", "requiereOC": true, "activo": true}, {"id": "c43", "rut": "99512250-2", "cliente": "MABU", "servicio": "CASETA", "contacto": "SEBASTIAN DOERING", "correo": "sdoering@mabu.cl", "requiereOC": true, "activo": true}, {"id": "c44", "rut": "76524914-7", "cliente": "BIOLOGICA LABORATORIOS SPA", "servicio": "CASETA", "contacto": "FELIPE ORELLANA / GIOVANNA GAMBOA", "correo": "forellana@biologicalaboratorios.cl", "requiereOC": true, "activo": true}, {"id": "c45", "rut": "91502000-3", "cliente": "SALFA", "servicio": "CASETA", "contacto": "PATRICIA MONTES", "correo": "pmontesv@salfa.cl", "requiereOC": true, "activo": true}, {"id": "c46", "rut": "76307389-0", "cliente": "PLANTA DE REVISIÓN TÉCNICA", "servicio": "GUARDIAS", "contacto": "SARA TORO", "correo": "storo@chrt.cl", "requiereOC": true, "activo": true}, {"id": "c47", "rut": "96874030-K", "cliente": "ABC SUR", "servicio": "GUARDIAS", "contacto": "MARJORIE ACUÑA", "correo": "marjorie.acuna@abc.cl", "requiereOC": true, "activo": true}, {"id": "c48", "rut": "96874030-K", "cliente": "ABC CENTRO", "servicio": "GUARDIAS", "contacto": "MARJORIE ACUÑA", "correo": "marjorie.acuna@abc.cl", "requiereOC": true, "activo": true}, {"id": "c49", "rut": "96874030-K", "cliente": "ABC METROPOLITANA", "servicio": "GUARDIAS", "contacto": "MARJORIE ACUÑA", "correo": "marjorie.acuna@abc.cl", "requiereOC": true, "activo": true}, {"id": "c50", "rut": "96874030-K", "cliente": "ABC QUINTA", "servicio": "GUARDIAS", "contacto": "MARJORIE ACUÑA", "correo": "marjorie.acuna@abc.cl", "requiereOC": true, "activo": true}, {"id": "c51", "rut": "76378831-8", "cliente": "FARMACIAS AHUMADA SPA", "servicio": "GUARDIAS", "contacto": "SILVA KAISER", "correo": "SKAISER@AHUMADA.CL", "requiereOC": true, "activo": true}, {"id": "c52", "rut": "76378831-8", "cliente": "FARMACIAS AHUMADA SPA", "servicio": "SPOT", "contacto": "SILVA KAISER", "correo": "SKAISER@AHUMADA.CL", "requiereOC": true, "activo": true}, {"id": "c53", "rut": "96792430-K", "cliente": "SODIMAC S.A.", "servicio": "GUARDIAS", "contacto": "JORGE GALAZ", "correo": "JGALAZT@SODIMAC.CL", "requiereOC": true, "activo": true}, {"id": "c54", "rut": "76993859-1", "cliente": "IKSO SPA PLAZA OESTE", "servicio": "GUARDIAS", "contacto": "ANDRES VILLAROEL", "correo": "AIVILLAROELT@IKEA.CL", "requiereOC": true, "activo": true}, {"id": "c55", "rut": "76993859-1", "cliente": "IKSO SPA PLAZA OESTE", "servicio": "CCTV", "contacto": "ANDRES VILLAROEL", "correo": "AIVILLAROELT@IKEA.CL", "requiereOC": true, "activo": true}, {"id": "c56", "rut": "76993859-1", "cliente": "IKSO SPA KENNEDY", "servicio": "GUARDIAS", "contacto": "MACARENA VEGA", "correo": "MALEJVEGA@IKEA.CL", "requiereOC": true, "activo": true}, {"id": "c57", "rut": "76993859-1", "cliente": "IKSO SPA KENNEDY", "servicio": "CCTV", "contacto": "MACARENA VEGA", "correo": "MALEJVEGA@IKEA.CL", "requiereOC": true, "activo": true}, {"id": "c58", "rut": "76993859-1", "cliente": "IKSO SPA KENNEDY", "servicio": "SUPERVISOR", "contacto": "CRISTIAN MONDINGER", "correo": "CEMODINGER@IKEA.CL", "requiereOC": true, "activo": true}, {"id": "c59", "rut": "76993859-1", "cliente": "IKSO SPA WAREHOUSE", "servicio": "GUARDIAS", "contacto": "CRISTIAN MONDINGER", "correo": "CEMODINGER@IKEA.CL", "requiereOC": true, "activo": true}, {"id": "c60", "rut": "76993859-1", "cliente": "IKSO SPA WAREHOUSE", "servicio": "CCTV", "contacto": "CRISTIAN MONDINGER", "correo": "CEMODINGER@IKEA.CL", "requiereOC": true, "activo": true}, {"id": "c61", "rut": "77529470-1", "cliente": "COMERCIAL SNA-E", "servicio": "GUARDIAS", "contacto": "LORENA GUTIERREZ", "correo": "LORENA.GUTIERREZ@SNAEUROPE.COM", "requiereOC": true, "activo": true}, {"id": "c62", "rut": "76351246-0", "cliente": "ALIANZA TECH (DGAC)", "servicio": "CASETA", "contacto": "RODRIGO VERDUGO", "correo": "rverdugo@alianzatech.net", "requiereOC": true, "activo": true}, {"id": "c63", "rut": "81201000-K", "cliente": "CENCOSUD JUMBO MEMBRILLAR", "servicio": "CASETA", "contacto": "CAROLINA NUÑEZ", "correo": "carolina.nunez@jumbo.cl", "requiereOC": true, "activo": true}, {"id": "c64", "rut": "78408990-8", "cliente": "CENCO RANCAGUA", "servicio": "CASETA", "contacto": "MARIANO MARTINEZ", "correo": "mariano.martinez@cencosud.cl", "requiereOC": true, "activo": true}, {"id": "c65", "rut": "81201000-K", "cliente": "CENCOSUD JUMBO", "servicio": "REFUERZOS", "contacto": "ROSA CAMPOS", "correo": "rosa.campos@santaisabel.cl", "requiereOC": true, "activo": true}, {"id": "c66", "rut": "76351246-0", "cliente": "ALIANZA TECH (PTE ALTO Y TNT CRUZ)", "servicio": "CASETA", "contacto": "JESUS ALVARADO", "correo": "jalvarado@alianzaseguridad.net", "requiereOC": true, "activo": true}, {"id": "c67", "rut": "78086058-8", "cliente": "PUNTO BRIKS SPA", "servicio": "CCTV", "contacto": "FELIPE ORELLANA / GIOVANNA GAMBOA", "correo": "forellana@biologicalaboratorios.cl", "requiereOC": true, "activo": true}, {"id": "c68", "rut": "77266515-6", "cliente": "A3 PROYECTOS, INVERSIONES Y RENTAS SPA", "servicio": "GUARDIAS", "contacto": "CESAR ANDRADE", "correo": "cesar@mercadocondell.cl", "requiereOC": true, "activo": true}];
 
@@ -2417,9 +2628,16 @@ function renderTechModal(){
   var estadoOpts = Object.keys(TECH_STATUS).map(function(k){ return '<option value="'+k+'" '+(t.estado===k?'selected':'')+'>'+TECH_STATUS[k].label+'</option>'; }).join('');
   var modal = document.getElementById('modalTech');
   modal.innerHTML =
-    '<div class="modal-head"><div><h2>'+(isEdit?'Editar servicio tecnología':'Nuevo servicio tecnología')+'</h2>' +
-      '<p>Servicios esporádicos (CCTV, proyectos, instalaciones).</p></div>' +
-      '<button class="modal-close" id="btnCloseTech">&times;</button></div>' +
+    '<div class="modal-head" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
+      '<div><h2>'+(isEdit?'Editar servicio tecnología':'Nuevo servicio tecnología')+'</h2>' +
+        '<p>Servicios esporádicos (CCTV, proyectos, instalaciones).</p></div>' +
+      '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<label class="btn btn-sm btn-ghost" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;border:1px dashed var(--blue);color:var(--blue);padding:4px 10px;font-size:11.5px;" title="Lee factura PDF y auto-completa N°, fecha y neto">' +
+          '⚡ Leer factura PDF' +
+          '<input type="file" id="tec_scanPdf" accept=".pdf" style="display:none;">' +
+        '</label>' +
+        '<button class="modal-close" id="btnCloseTech">&times;</button>' +
+      '</div></div>' +
     '<div class="modal-body">' +
       '<div class="field-grid">' +
         '<div class="field"><label>Mes de servicio</label><input type="month" id="tf_periodo" value="'+esc(t.periodo)+'"></div>' +
@@ -2440,7 +2658,7 @@ function renderTechModal(){
       '<p class="hint">Al ingresar un N° de factura, si el estado está en “Pendiente” pasará automáticamente a “Facturado”.</p>' +
       '<div class="section" style="margin-top:14px;"><div class="section-head"><h4>📎 Respaldos de este servicio (factura, OC, HES)</h4></div><div class="section-body">' +
         '<div class="adj-form" style="margin-bottom:10px;">' +
-          '<div class="fgroup"><label>Archivo (PDF o imagen)</label><input type="file" id="tec_adjFile" accept=".pdf,image/*"></div>' +
+          '<div class="fgroup"><label>Archivo (PDF o imagen) <span style="font-weight:400;color:var(--blue);font-size:11px;">(⚡ Auto-completa si es factura PDF)</span></label><input type="file" id="tec_adjFile" accept=".pdf,image/*"></div>' +
           '<div class="fgroup"><label>Tipo</label><select id="tec_adjCat"><option value="factura">Factura</option><option value="oc">Orden de compra</option><option value="hes">HES / ROC</option><option value="otro">Otro</option></select></div>' +
           '<div class="fgroup"><label>N° de referencia</label><input type="text" id="tec_adjRef" value="'+esc(t.factura||'')+'" placeholder="N° factura"></div>' +
           '<div class="fgroup" style="align-self:flex-end;"><button class="btn btn-primary" id="tec_btnAdj">Adjuntar</button></div>' +
@@ -2474,6 +2692,76 @@ function renderTechModal(){
   });
   var fecfacEl = document.getElementById('tf_fecfac'), vtoEl = document.getElementById('tf_vto');
   fecfacEl.addEventListener('change', function(){ if(fecfacEl.value) vtoEl.value = addDaysISO(fecfacEl.value, 30); });
+
+  var tecScanInput = document.getElementById('tec_scanPdf');
+  if(tecScanInput){
+    tecScanInput.addEventListener('change', async function(){
+      var file = tecScanInput.files && tecScanInput.files[0];
+      if(file){
+        toast('Analizando factura PDF…', '');
+        try {
+          var text = await extractTextFromPDF(file);
+          var data = parseInvoiceText(text);
+          if(data){
+            if(data.numero) document.getElementById('tf_factura').value = data.numero;
+            if(data.fecha){
+              document.getElementById('tf_fecfac').value = data.fecha;
+              document.getElementById('tf_vto').value = addDaysISO(data.fecha, 30);
+            }
+            if(data.neto > 0){
+              document.getElementById('tf_neto').value = formatThousands(data.neto);
+              var iva = Math.round(data.neto * 0.19);
+              modal.querySelector('.computed').innerHTML = '<span>IVA (19%): '+fmtMoney(iva)+'</span><span>Total: '+fmtMoney(data.neto+iva)+'</span>';
+            }
+            if(data.esValidoSII && document.getElementById('tf_estado').value === 'pendiente'){
+              document.getElementById('tf_estado').value = 'facturado';
+            }
+            var msg = '✓ Factura leída: ' + (data.numero ? ('N° ' + data.numero) : '') + (data.neto ? (' · $' + formatThousands(data.neto) + ' neto') : '') + (data.esValidoSII ? ' · Válida SII' : ' · (No tributaria)');
+            toast(msg, 'ok');
+          }
+        } catch(e){
+          console.error(e);
+          toast('No se pudo leer el archivo PDF.', 'err');
+        }
+      }
+    });
+  }
+  var tecFileInput = document.getElementById('tec_adjFile');
+  if(tecFileInput){
+    tecFileInput.addEventListener('change', async function(){
+      var file = tecFileInput.files && tecFileInput.files[0];
+      if(file && file.name.toLowerCase().endsWith('.pdf')){
+        var catSelect = document.getElementById('tec_adjCat');
+        if(catSelect && (!catSelect.value || catSelect.value === 'factura')){
+          catSelect.value = 'factura';
+          try {
+            var text = await extractTextFromPDF(file);
+            var data = parseInvoiceText(text);
+            if(data){
+              if(data.numero){
+                var refInput = document.getElementById('tec_adjRef');
+                if(refInput && !refInput.value) refInput.value = data.numero;
+                if(!document.getElementById('tf_factura').value) document.getElementById('tf_factura').value = data.numero;
+              }
+              if(data.fecha && !document.getElementById('tf_fecfac').value){
+                document.getElementById('tf_fecfac').value = data.fecha;
+                document.getElementById('tf_vto').value = addDaysISO(data.fecha, 30);
+              }
+              if(data.neto > 0 && (!document.getElementById('tf_neto').value || document.getElementById('tf_neto').value === '0')){
+                document.getElementById('tf_neto').value = formatThousands(data.neto);
+                var iva = Math.round(data.neto * 0.19);
+                modal.querySelector('.computed').innerHTML = '<span>IVA (19%): '+fmtMoney(iva)+'</span><span>Total: '+fmtMoney(data.neto+iva)+'</span>';
+              }
+              if(data.esValidoSII && document.getElementById('tf_estado').value === 'pendiente'){
+                document.getElementById('tf_estado').value = 'facturado';
+              }
+            }
+          } catch(e){ console.warn(e); }
+        }
+      }
+    });
+  }
+
   document.getElementById('btnSaveTech').onclick = function(){
     var wasNew = !editingTechId;
     var id = saveTechFromForm(); if(!id) return;
@@ -3179,7 +3467,13 @@ function renderRecordModal(){
         '<label class="check-row"><input type="checkbox" data-field="hes.recibido" '+(rec.hes.recibido?'checked':'')+(client.requiereHES?'':' disabled')+'><span class="ctext">HES / ROC recibido</span></label>' +
         '<div class="field-grid"><div class="field"><label>N° HES / ROC</label><input type="text" data-field="hes.numero" value="'+esc(rec.hes.numero)+'"'+(client.requiereHES?'':' disabled')+'></div><div class="field"><label>Fecha de recepción</label><input type="date" data-field="hes.fecha" value="'+rec.hes.fecha+'"'+(client.requiereHES?'':' disabled')+'></div></div>' +
       '</div></div>' +
-      '<div class="section"><div class="section-head"><h4><span class="section-num">4</span>Factura</h4></div><div class="section-body">' +
+      '<div class="section"><div class="section-head" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
+        '<h4><span class="section-num">4</span>Factura</h4>' +
+        '<label class="btn btn-sm btn-ghost" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;border:1px dashed var(--blue);color:var(--blue);padding:4px 10px;font-size:11.5px;" title="Carga una factura PDF y lee automáticamente N° factura, fecha, monto neto y estado SII">' +
+          '⚡ Leer factura PDF' +
+          '<input type="file" id="rec_scanPdf" accept=".pdf" style="display:none;">' +
+        '</label>' +
+      '</div><div class="section-body">' +
         '<label class="check-row"><input type="checkbox" data-field="factura.emitida" '+(rec.factura.emitida?'checked':'')+'><span class="ctext">Factura emitida</span></label>' +
         '<div class="field-grid"><div class="field"><label>N° de factura</label><input type="text" data-field="factura.numero" value="'+esc(rec.factura.numero)+'"></div>' +
           '<div class="field"><label>Fecha facturada</label><input type="date" data-field="factura.fechaFacturada" value="'+rec.factura.fechaFacturada+'"></div>' +
@@ -3230,7 +3524,7 @@ function renderRecordModal(){
       '<div class="section"><div class="section-head"><h4>Notas / Glosa</h4></div><div class="section-body"><textarea data-field="notas">'+esc(rec.notas)+'</textarea></div></div>' +
       '<div class="section"><div class="section-head"><h4>📎 Respaldos de este registro (factura, OC, HES)</h4></div><div class="section-body">' +
         '<div class="adj-form" style="margin-bottom:10px;">' +
-          '<div class="fgroup"><label>Archivo (PDF o imagen)</label><input type="file" id="rec_adjFile" accept=".pdf,image/*"></div>' +
+          '<div class="fgroup"><label>Archivo (PDF o imagen) <span style="font-weight:400;color:var(--blue);font-size:11px;">(⚡ Auto-completa si es factura PDF)</span></label><input type="file" id="rec_adjFile" accept=".pdf,image/*"></div>' +
           '<div class="fgroup"><label>Tipo</label><select id="rec_adjCat"><option value="factura">Factura</option><option value="oc">Orden de compra</option><option value="hes">HES / ROC</option><option value="otro">Otro</option></select></div>' +
           '<div class="fgroup"><label>N° de referencia</label><input type="text" id="rec_adjRef" list="rec_adjRefList" value="'+esc(rec.factura.numero||'')+'" placeholder="N° factura"><datalist id="rec_adjRefList">'+(rec.factura.numero?('<option value="'+esc(rec.factura.numero)+'"></option>'):'')+((rec.factura2&&rec.factura2.numero)?('<option value="'+esc(rec.factura2.numero)+'"></option>'):'')+(rec.oc&&rec.oc.numero?('<option value="'+esc(rec.oc.numero)+'"></option>'):'')+'</datalist></div>' +
           '<div class="fgroup"><label>Cliente</label><input type="text" id="rec_adjCliente" value="'+esc(client?client.cliente:'')+'"></div>' +
@@ -3253,6 +3547,32 @@ function wireRecordModalEvents(){
   document.getElementById('btnDeleteRecord').onclick = function(){
     if(confirm('¿Eliminar este registro de facturación?')){ delete state.records[editingRecordKey]; closeRecordModal(); toast('Registro eliminado.', 'ok'); persist(); }
   };
+  var scanPdfInput = document.getElementById('rec_scanPdf');
+  if(scanPdfInput){
+    scanPdfInput.addEventListener('change', async function(){
+      var file = scanPdfInput.files && scanPdfInput.files[0];
+      if(file){
+        await procesarFacturaPDF(file, editingRecordKey);
+      }
+    });
+  }
+  var recFileInput = document.getElementById('rec_adjFile');
+  if(recFileInput){
+    recFileInput.addEventListener('change', async function(){
+      var file = recFileInput.files && recFileInput.files[0];
+      if(file && file.name.toLowerCase().endsWith('.pdf')){
+        var catSelect = document.getElementById('rec_adjCat');
+        if(catSelect && (!catSelect.value || catSelect.value === 'factura')){
+          catSelect.value = 'factura';
+          var data = await procesarFacturaPDF(file, editingRecordKey);
+          if(data && data.numero){
+            var refInput = document.getElementById('rec_adjRef');
+            if(refInput && !refInput.value) refInput.value = data.numero;
+          }
+        }
+      }
+    });
+  }
   var recAdjBtn = document.getElementById('rec_btnAdj');
   if(recAdjBtn){ recAdjBtn.onclick = subirAdjuntoRegistro; }
   Array.prototype.forEach.call(modal.querySelectorAll('[data-field]'), function(el){
