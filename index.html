@@ -1761,6 +1761,90 @@ function extractInvoiceDate(rawText){
   return '';
 }
 
+function cleanRefNumber(s, invoiceNum){
+  if(!s) return '';
+  s = String(s).trim().replace(/^[:\.\-#\s\/]+/, '').replace(/[:\.\-#\s\/]+$/, '');
+  if(s.length < 2) return '';
+  if(/^(DEL|DE|FECHA|CLIENTE|RUT|TOTAL|NETO|ELECTRONICA|SANTIAGO|FACTURA|IVA|S\.I\.I\.|SII|POR|CON|SIN|N\/A|NO|SI|S|N|EN|AL|EL|LA|LOS|LAS|UN|UNA|DOC|DOCTO|FOLIO|TIPO)$/i.test(s)) return '';
+  if(invoiceNum && s === String(invoiceNum)) return '';
+  return s;
+}
+
+function extractOC(rawText, invoiceNum){
+  if(!rawText) return '';
+  
+  // 1. DTE Reference Code 801 (Orden de Compra)
+  var m801 = rawText.match(/(?:801[^\w\n]{0,20}(?:ORDEN\s+DE\s+COMPRA|OC)[^\w\n]{0,10}|TIPO\s+DOC[^\n]{0,20}801[^\n]{0,20}FOLIO[:\s]*)([A-Za-z0-9\-_]{2,30})/i);
+  if(m801){
+    var val = cleanRefNumber(m801[1], invoiceNum);
+    if(val) return val;
+  }
+
+  // 2. ORDEN DE COMPRA N° / O.C. N° / OC N° / O/C: / PURCHASE ORDER
+  var mOC = rawText.match(/(?:ORDEN\s+DE\s+COMPRA\s+(?:CLIENTE\s+)?|ORDEN\s+COMPRA\s+|N[°ºo\.]?\s*ORDEN\s+DE\s+COMPRA\s*|PURCHASE\s+ORDER\s*|N[°ºo\.]?\s*O\.?C\.?\s*|NRO\.?\s*O\.?C\.?\s*|O\.?C\.?\s*CLIENTE\s*|O\.?C\.?\s*[:#N°ºo\.\-]\s*|O\/C\s*[:#N°ºo\.\-]\s*|OC\s*[:#N°ºo\.\-]\s*)([A-Za-z0-9\-_]{2,30})/i);
+  if(mOC){
+    var val = cleanRefNumber(mOC[1], invoiceNum);
+    if(val) return val;
+  }
+
+  // 3. Glosa "SEGÚN ORDEN DE COMPRA 12345" / "SEGÚN OC 12345" / "S/ OC 12345"
+  var mSegun = rawText.match(/(?:SEG[UÚ]N|CONFORME\s+A|S\/)\s*(?:ORDEN\s+DE\s+COMPRA|O\.?C\.?|OC)[^\w\n]{0,10}([A-Za-z0-9\-_]{2,30})/i);
+  if(mSegun){
+    var val = cleanRefNumber(mSegun[1], invoiceNum);
+    if(val) return val;
+  }
+
+  // 4. Standalone "OC: 12345" or "OC 12345"
+  var mSimple = rawText.match(/\b(?:OC|O\.C\.|O\/C)\s*[:\.\s#\-]+\s*([0-9]{3,20}[A-Za-z0-9\-_]*)/i);
+  if(mSimple){
+    var val = cleanRefNumber(mSimple[1], invoiceNum);
+    if(val) return val;
+  }
+
+  return '';
+}
+
+function extractHESorROC(rawText, invoiceNum){
+  if(!rawText) return '';
+
+  // 1. DTE Reference Code 802 (HES) or 803 (ROC)
+  var mRef = rawText.match(/(?:802[^\w\n]{0,20}(?:HES|HOJA\s+DE\s+ENTRADA)[^\w\n]{0,10}|803[^\w\n]{0,20}(?:ROC|RECEPCION)[^\w\n]{0,10})([A-Za-z0-9\-_]{2,30})/i);
+  if(mRef){
+    var val = cleanRefNumber(mRef[1], invoiceNum);
+    if(val) return val;
+  }
+
+  // 2. HES / HOJA DE ENTRADA DE SERVICIO N° / H.E.S. N° / HES/ROC
+  var mHES = rawText.match(/(?:HOJA\s+(?:DE\s+)?ENTRADA\s+(?:DE\s+)?SERVICIO[S]?\s+(?:N[°ºo\.\s:]*)?|H\.?E\.?S\.?\s*CLIENTE\s*[:#N°ºo\.\-]*|H\.?E\.?S\.?\s*[:#N°ºo\.\-]\s*|HES\s*[:#N°ºo\.\-]\s*|N[°ºo\.]?\s*H\.?E\.?S\.?\s*[:#N°ºo\.\-]*|NRO\.?\s*H\.?E\.?S\.?\s*[:#N°ºo\.\-]*|HES\s*\/\s*ROC\s*[:#N°ºo\.\-]*)([A-Za-z0-9\-_]{2,30})/i);
+  if(mHES){
+    var val = cleanRefNumber(mHES[1], invoiceNum);
+    if(val) return val;
+  }
+
+  // 3. ROC / RECEPCION DE ORDEN DE COMPRA N°
+  var mROC = rawText.match(/(?:RECEPCI[OÓ]N\s+(?:DE\s+)?ORDEN\s+(?:DE\s+)?COMPRA\s+(?:N[°ºo\.\s:]*)?|RECEPCI[OÓ]N\s+OC\s*[:#N°ºo\.\-]*|R\.?O\.?C\.?\s*CLIENTE\s*[:#N°ºo\.\-]*|R\.?O\.?C\.?\s*[:#N°ºo\.\-]\s*|ROC\s*[:#N°ºo\.\-]\s*|N[°ºo\.]?\s*R\.?O\.?C\.?\s*[:#N°ºo\.\-]*|NRO\.?\s*R\.?O\.?C\.?\s*[:#N°ºo\.\-]*)([A-Za-z0-9\-_]{2,30})/i);
+  if(mROC){
+    var val = cleanRefNumber(mROC[1], invoiceNum);
+    if(val) return val;
+  }
+
+  // 4. Glosa "SEGÚN HES 12345" / "SEGÚN ROC 12345"
+  var mSegun = rawText.match(/(?:SEG[UÚ]N|CONFORME\s+A|S\/)\s*(?:H\.?E\.?S\.?|R\.?O\.?C\.?|HOJA\s+DE\s+ENTRADA|RECEPCI[OÓ]N)[^\w\n]{0,10}([A-Za-z0-9\-_]{2,30})/i);
+  if(mSegun){
+    var val = cleanRefNumber(mSegun[1], invoiceNum);
+    if(val) return val;
+  }
+
+  // 5. Standalone "HES: 12345" or "ROC: 12345"
+  var mSimple = rawText.match(/\b(?:HES|H\.E\.S\.|ROC|R\.O\.C\.)\s*[:\.\s#\-]+\s*([0-9]{3,20}[A-Za-z0-9\-_]*)/i);
+  if(mSimple){
+    var val = cleanRefNumber(mSimple[1], invoiceNum);
+    if(val) return val;
+  }
+
+  return '';
+}
+
 function parseInvoiceText(rawText){
   if(!rawText) return null;
   var norm = rawText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
@@ -1823,10 +1907,18 @@ function parseInvoiceText(rawText){
     }
   }
 
+  // 5. Orden de Compra (OC)
+  var oc = extractOC(rawText, numero);
+
+  // 6. HES / ROC
+  var hes = extractHESorROC(rawText, numero);
+
   return {
     numero: numero,
     fecha: fecha,
     neto: neto,
+    oc: oc,
+    hes: hes,
     esValidoSII: esValidoSII,
     rawText: rawText
   };
@@ -1871,11 +1963,31 @@ async function procesarFacturaPDF(file, recKey){
         rec.factura.enviadaSII = false;
         touched.push('factura.enviadaSII');
       }
+      if(data.oc){
+        rec.oc.numero = data.oc;
+        rec.oc.solicitada = true;
+        rec.oc.recibida = true;
+        if(!rec.oc.fecha) rec.oc.fecha = data.fecha || todayISO();
+        touched.push('oc.numero', 'oc.solicitada', 'oc.recibida', 'oc.fecha');
+      }
+      if(data.hes){
+        rec.hes.numero = data.hes;
+        rec.hes.solicitado = true;
+        rec.hes.recibido = true;
+        if(!rec.hes.fecha) rec.hes.fecha = data.fecha || todayISO();
+        touched.push('hes.numero', 'hes.solicitado', 'hes.recibido', 'hes.fecha');
+      }
 
       syncModalDynamic(touched);
       persist();
 
-      var msg = '✓ Factura leída: ' + (data.numero ? ('N° ' + data.numero) : '') + (data.neto ? (' · $' + formatThousands(data.neto) + ' neto') : '') + (data.esValidoSII ? ' · Enviada al SII' : ' · (No tributaria)');
+      var details = [];
+      if(data.numero) details.push('N° ' + data.numero);
+      if(data.neto) details.push('$' + formatThousands(data.neto) + ' neto');
+      if(data.oc) details.push('OC: ' + data.oc);
+      if(data.hes) details.push('HES/ROC: ' + data.hes);
+      if(data.esValidoSII) details.push('Enviada SII');
+      var msg = '✓ Factura leída: ' + details.join(' · ');
       toast(msg, 'ok');
     }
     return data;
@@ -2708,6 +2820,8 @@ function renderTechModal(){
               document.getElementById('tf_fecfac').value = data.fecha;
               document.getElementById('tf_vto').value = addDaysISO(data.fecha, 30);
             }
+            if(data.oc) document.getElementById('tf_oc').value = data.oc;
+            if(data.hes) document.getElementById('tf_hes').value = data.hes;
             if(data.neto > 0){
               document.getElementById('tf_neto').value = formatThousands(data.neto);
               var iva = Math.round(data.neto * 0.19);
@@ -2716,7 +2830,13 @@ function renderTechModal(){
             if(data.esValidoSII && document.getElementById('tf_estado').value === 'pendiente'){
               document.getElementById('tf_estado').value = 'facturado';
             }
-            var msg = '✓ Factura leída: ' + (data.numero ? ('N° ' + data.numero) : '') + (data.neto ? (' · $' + formatThousands(data.neto) + ' neto') : '') + (data.esValidoSII ? ' · Válida SII' : ' · (No tributaria)');
+            var details = [];
+            if(data.numero) details.push('N° ' + data.numero);
+            if(data.neto) details.push('$' + formatThousands(data.neto) + ' neto');
+            if(data.oc) details.push('OC: ' + data.oc);
+            if(data.hes) details.push('HES/ROC: ' + data.hes);
+            if(data.esValidoSII) details.push('Válida SII');
+            var msg = '✓ Factura leída: ' + details.join(' · ');
             toast(msg, 'ok');
           }
         } catch(e){
@@ -2746,6 +2866,12 @@ function renderTechModal(){
               if(data.fecha && !document.getElementById('tf_fecfac').value){
                 document.getElementById('tf_fecfac').value = data.fecha;
                 document.getElementById('tf_vto').value = addDaysISO(data.fecha, 30);
+              }
+              if(data.oc && !document.getElementById('tf_oc').value){
+                document.getElementById('tf_oc').value = data.oc;
+              }
+              if(data.hes && !document.getElementById('tf_hes').value){
+                document.getElementById('tf_hes').value = data.hes;
               }
               if(data.neto > 0 && (!document.getElementById('tf_neto').value || document.getElementById('tf_neto').value === '0')){
                 document.getElementById('tf_neto').value = formatThousands(data.neto);
@@ -3628,7 +3754,11 @@ function syncModalDynamic(touchedFields){
     var el = document.querySelector('#modalRegistro [data-field="'+f+'"]');
     if(el && document.activeElement !== el){
       var v = getPath(rec, f);
-      el.value = (isMoneyField(f) || el.classList.contains('money-input')) ? (v ? formatThousands(v) : '') : v;
+      if(el.type === 'checkbox'){
+        el.checked = !!v;
+      } else {
+        el.value = (isMoneyField(f) || el.classList.contains('money-input')) ? (v ? formatThousands(v) : '') : (v || '');
+      }
     }
   });
 }
