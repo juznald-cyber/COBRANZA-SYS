@@ -1924,7 +1924,7 @@ function parseInvoiceText(rawText){
   };
 }
 
-async function procesarFacturaPDF(file, recKey){
+async function procesarFacturaPDF(file, recKey, targetSlot){
   if(!file) return null;
   try{
     toast('Analizando y leyendo factura PDF…', '');
@@ -1937,58 +1937,128 @@ async function procesarFacturaPDF(file, recKey){
     var rec = state.records[recKey || editingRecordKey];
     if(rec){
       var touched = [];
-      rec.factura.emitida = true;
-      touched.push('factura.emitida');
+      if(!rec.factura2) rec.factura2 = { activa:false, tipo:'Saldo', numero:'', fechaFacturada:'', fechaVencimiento:'', neto:0, iva:0, total:0, oc:'', hes:'', enviadaSII:false, factorizado:false, entidad:'', factoringFecha:'', pagado:false, pagoFecha:'' };
 
-      if(data.numero){
-        rec.factura.numero = data.numero;
-        touched.push('factura.numero');
-      }
-      if(data.fecha){
-        rec.factura.fechaFacturada = data.fecha;
-        rec.factura.fechaVencimiento = addDaysISO(data.fecha, 30);
-        touched.push('factura.fechaFacturada', 'factura.fechaVencimiento');
-      }
-      if(data.neto > 0){
-        rec.factura.neto = data.neto;
-        rec.factura.iva = Math.round(data.neto * 0.19);
-        rec.factura.total = data.neto + rec.factura.iva;
-        touched.push('factura.neto');
-      }
-      if(data.esValidoSII){
-        rec.factura.enviadaSII = true;
-        rec.factura.fechaEnvioSII = data.fecha || todayISO();
-        touched.push('factura.enviadaSII', 'factura.fechaEnvioSII');
+      // Determinar si va a la 1ª factura (rec.factura) o a la 2ª factura (rec.factura2)
+      var isSecond = false;
+      if(targetSlot === 'factura2'){
+        isSecond = true;
+      } else if(targetSlot === 'factura'){
+        isSecond = false;
       } else {
-        rec.factura.enviadaSII = false;
-        touched.push('factura.enviadaSII');
-      }
-      if(data.oc){
-        rec.oc.numero = data.oc;
-        rec.oc.solicitada = true;
-        rec.oc.recibida = true;
-        if(!rec.oc.fecha) rec.oc.fecha = data.fecha || todayISO();
-        touched.push('oc.numero', 'oc.solicitada', 'oc.recibida', 'oc.fecha');
-      }
-      if(data.hes){
-        rec.hes.numero = data.hes;
-        rec.hes.solicitado = true;
-        rec.hes.recibido = true;
-        if(!rec.hes.fecha) rec.hes.fecha = data.fecha || todayISO();
-        touched.push('hes.numero', 'hes.solicitado', 'hes.recibido', 'hes.fecha');
+        // Modo 'auto': si la 1ª factura ya tiene número o neto y el número nuevo difiere, se asigna a la 2ª factura
+        var fac1Num = String(rec.factura.numero || '').trim();
+        var newNum = String(data.numero || '').trim();
+        if(fac1Num && newNum && fac1Num !== newNum){
+          isSecond = true;
+        } else if(fac1Num && !newNum && rec.factura.neto > 0){
+          isSecond = true;
+        } else if(!fac1Num && rec.factura.neto > 0 && data.neto > 0 && data.neto !== rec.factura.neto){
+          isSecond = true;
+        }
       }
 
-      syncModalDynamic(touched);
-      persist();
+      if(isSecond){
+        // Registrar en SECCIÓN 6: Segunda factura (anticipo / saldo)
+        rec.factura2.activa = true;
+        touched.push('factura2.activa');
+        if(!rec.factura2.tipo) rec.factura2.tipo = 'Saldo';
+        touched.push('factura2.tipo');
 
-      var details = [];
-      if(data.numero) details.push('N° ' + data.numero);
-      if(data.neto) details.push('$' + formatThousands(data.neto) + ' neto');
-      if(data.oc) details.push('OC: ' + data.oc);
-      if(data.hes) details.push('HES/ROC: ' + data.hes);
-      if(data.esValidoSII) details.push('Enviada SII');
-      var msg = '✓ Factura leída: ' + details.join(' · ');
-      toast(msg, 'ok');
+        if(data.numero){
+          rec.factura2.numero = data.numero;
+          touched.push('factura2.numero');
+        }
+        if(data.fecha){
+          rec.factura2.fechaFacturada = data.fecha;
+          rec.factura2.fechaVencimiento = addDaysISO(data.fecha, 30);
+          touched.push('factura2.fechaFacturada', 'factura2.fechaVencimiento');
+        }
+        if(data.neto > 0){
+          rec.factura2.neto = data.neto;
+          rec.factura2.iva = Math.round(data.neto * 0.19);
+          rec.factura2.total = data.neto + rec.factura2.iva;
+          touched.push('factura2.neto');
+        }
+        if(data.oc){
+          rec.factura2.oc = data.oc;
+          touched.push('factura2.oc');
+        }
+        if(data.hes){
+          rec.factura2.hes = data.hes;
+          touched.push('factura2.hes');
+        }
+        if(data.esValidoSII){
+          rec.factura2.enviadaSII = true;
+          touched.push('factura2.enviadaSII');
+        }
+
+        syncModalDynamic(touched);
+        persist();
+
+        var details = [];
+        if(data.numero) details.push('N° ' + data.numero);
+        if(data.neto) details.push('$' + formatThousands(data.neto) + ' neto');
+        if(data.oc) details.push('OC: ' + data.oc);
+        if(data.hes) details.push('HES/ROC: ' + data.hes);
+        if(data.esValidoSII) details.push('Enviada SII');
+        var msg = '✓ 2ª Factura leída y agregada en Sección 6 (Segunda factura): ' + details.join(' · ');
+        toast(msg, 'ok');
+      } else {
+        // Registrar en SECCIÓN 4: Primera factura
+        rec.factura.emitida = true;
+        touched.push('factura.emitida');
+
+        if(data.numero){
+          rec.factura.numero = data.numero;
+          touched.push('factura.numero');
+        }
+        if(data.fecha){
+          rec.factura.fechaFacturada = data.fecha;
+          rec.factura.fechaVencimiento = addDaysISO(data.fecha, 30);
+          touched.push('factura.fechaFacturada', 'factura.fechaVencimiento');
+        }
+        if(data.neto > 0){
+          rec.factura.neto = data.neto;
+          rec.factura.iva = Math.round(data.neto * 0.19);
+          rec.factura.total = data.neto + rec.factura.iva;
+          touched.push('factura.neto');
+        }
+        if(data.esValidoSII){
+          rec.factura.enviadaSII = true;
+          rec.factura.fechaEnvioSII = data.fecha || todayISO();
+          touched.push('factura.enviadaSII', 'factura.fechaEnvioSII');
+        } else {
+          rec.factura.enviadaSII = false;
+          touched.push('factura.enviadaSII');
+        }
+        if(data.oc){
+          rec.oc.numero = data.oc;
+          rec.oc.solicitada = true;
+          rec.oc.recibida = true;
+          if(!rec.oc.fecha) rec.oc.fecha = data.fecha || todayISO();
+          touched.push('oc.numero', 'oc.solicitada', 'oc.recibida', 'oc.fecha');
+        }
+        if(data.hes){
+          rec.hes.numero = data.hes;
+          rec.hes.solicitado = true;
+          rec.hes.recibido = true;
+          if(!rec.hes.fecha) rec.hes.fecha = data.fecha || todayISO();
+          touched.push('hes.numero', 'hes.solicitado', 'hes.recibido', 'hes.fecha');
+        }
+
+        syncModalDynamic(touched);
+        persist();
+
+        var details = [];
+        if(data.numero) details.push('N° ' + data.numero);
+        if(data.neto) details.push('$' + formatThousands(data.neto) + ' neto');
+        if(data.oc) details.push('OC: ' + data.oc);
+        if(data.hes) details.push('HES/ROC: ' + data.hes);
+        if(data.esValidoSII) details.push('Enviada SII');
+        var msg = '✓ Factura leída: ' + details.join(' · ');
+        toast(msg, 'ok');
+      }
     }
     return data;
   }catch(err){
@@ -3626,7 +3696,13 @@ function renderRecordModal(){
           '<div class="field-grid"><div class="field"><label>Fecha de pago</label><input type="date" data-field="pago.fecha" value="'+rec.pago.fecha+'"></div>' +
             '<div class="field"><label>Monto pagado</label><input type="text" inputmode="numeric" class="money-input" data-field="pago.monto" value="'+(rec.pago.monto ? formatThousands(rec.pago.monto) : '')+'" placeholder="0"></div></div></div>' +
       '</div></div></div>' +
-      '<div class="section"><div class="section-head"><h4><span class="section-num">6</span>Segunda factura (anticipo / saldo)</h4></div><div class="section-body">' +
+      '<div class="section"><div class="section-head" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">' +
+        '<h4><span class="section-num">6</span>Segunda factura (anticipo / saldo)</h4>' +
+        '<label class="btn btn-sm btn-ghost" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;border:1px dashed var(--purple);color:var(--purple);padding:4px 10px;font-size:11.5px;" title="Carga una 2ª factura PDF y auto-completa los datos de anticipo/saldo">' +
+          '⚡ Leer 2ª factura PDF' +
+          '<input type="file" id="rec_scanPdf2" accept=".pdf" style="display:none;">' +
+        '</label>' +
+      '</div><div class="section-body">' +
         '<label class="check-row"><input type="checkbox" data-field="factura2.activa" '+(rec.factura2.activa?'checked':'')+'><span class="ctext">Agregar una segunda factura</span><span class="csub"> — por ejemplo un anticipo y luego el saldo</span></label>' +
         '<div class="field-grid">' +
           '<div class="field"><label>Tipo</label><select data-field="factura2.tipo"><option '+(rec.factura2.tipo==='Anticipo'?'selected':'')+'>Anticipo</option><option '+(rec.factura2.tipo==='Saldo'?'selected':'')+'>Saldo</option><option '+(rec.factura2.tipo==='Otra'?'selected':'')+'>Otra</option></select></div>' +
@@ -3678,7 +3754,16 @@ function wireRecordModalEvents(){
     scanPdfInput.addEventListener('change', async function(){
       var file = scanPdfInput.files && scanPdfInput.files[0];
       if(file){
-        await procesarFacturaPDF(file, editingRecordKey);
+        await procesarFacturaPDF(file, editingRecordKey, 'factura');
+      }
+    });
+  }
+  var scanPdfInput2 = document.getElementById('rec_scanPdf2');
+  if(scanPdfInput2){
+    scanPdfInput2.addEventListener('change', async function(){
+      var file = scanPdfInput2.files && scanPdfInput2.files[0];
+      if(file){
+        await procesarFacturaPDF(file, editingRecordKey, 'factura2');
       }
     });
   }
@@ -3690,7 +3775,7 @@ function wireRecordModalEvents(){
         var catSelect = document.getElementById('rec_adjCat');
         if(catSelect && (!catSelect.value || catSelect.value === 'factura')){
           catSelect.value = 'factura';
-          var data = await procesarFacturaPDF(file, editingRecordKey);
+          var data = await procesarFacturaPDF(file, editingRecordKey, 'auto');
           if(data && data.numero){
             var refInput = document.getElementById('rec_adjRef');
             if(refInput && !refInput.value) refInput.value = data.numero;
@@ -4525,6 +4610,16 @@ async function subirAdjuntoRegistro(){
   var ref = refEl ? refEl.value.trim() : (rec.factura.numero || rec.oc.numero || rec.hes.numero || '');
   var cliEl = document.getElementById('rec_adjCliente');
   var cliNombre = cliEl ? cliEl.value.trim() : (client.cliente||'');
+
+  if(f.name.toLowerCase().endsWith('.pdf') && cat === 'factura'){
+    try{
+      var pdfData = await procesarFacturaPDF(f, editingRecordKey, 'auto');
+      if(pdfData && pdfData.numero && (!ref || ref === '—')){
+        ref = pdfData.numero;
+      }
+    }catch(err){ console.warn('PDF auto-extract skipped on upload:', err); }
+  }
+
   var btn = document.getElementById('rec_btnAdj'); btn.disabled = true; btn.textContent = 'Subiendo…';
   try{
     var dataUrl = await readFileAsDataURL(f);
