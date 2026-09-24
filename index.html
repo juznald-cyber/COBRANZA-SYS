@@ -2002,24 +2002,37 @@ function parseCreditNoteText(rawText){
   // 2. Fecha
   var fecha = extractInvoiceDate(rawText);
 
-  // 3. Monto Neto / Total
+  // 3. Monto Neto / Total / IVA
   var neto = 0;
   var netoM = rawText.match(/(?:MONTO\s+NETO|TOTAL\s+NETO|SUB\s*TOTAL|VALOR\s+NETO|NETO\s*AFECTO|NETO)[^\d\$\n]{0,25}\$?\s*([\d\.\,]{3,})/i);
   if(netoM){
     neto = parseInvoiceMoney(netoM[1]);
   }
   var total = 0;
-  var totM = rawText.match(/(?:TOTAL\s+A\s+MODIFICAR|TOTAL\s+MODIFICADO|TOTAL\s+NOTA\s+(?:DE\s+)?CR[EÉ]DITO|TOTAL\s+FINAL|TOTAL)[^\d\$\n]{0,25}\$?\s*([\d\.\,]{3,})/i);
+  var totM = rawText.match(/(?:TOTAL\s+(?:A\s+MODIFICAR|MODIFICADO|FINAL|A\s+PAGAR|GENERAL|NOTA\s+(?:DE\s+)?CR[EÉ]DITO)|MONTO\s+TOTAL|VALOR\s+TOTAL|(?:^|\n)\s*TOTAL)[^\d\$\n]{0,25}\$?\s*([\d\.\,]{3,})/i);
   if(totM){
     total = parseInvoiceMoney(totM[1]);
   }
-  if(!neto && total > 0){
-    neto = Math.round(total / 1.19);
+  var iva = 0;
+  var ivaM = rawText.match(/(?:19\s*%\s*IVA|IVA\s*(?:19\s*%)?|IMPUESTO\s+AL\s+VALOR\s+AGREGADO)[^\d\$\n]{0,25}\$?\s*([\d\.\,]{3,})/i);
+  if(ivaM){
+    iva = parseInvoiceMoney(ivaM[1]);
   }
-  if(!total && neto > 0){
-    total = Math.round(neto * 1.19);
+
+  // Validación de consistencia: en DTE chileno, total >= neto.
+  if(neto > 0 && total > 0){
+    if(total < neto || total < (neto * 0.98)){
+      total = iva > 0 ? (neto + iva) : Math.round(neto * 1.19);
+    }
+  } else if(!total && neto > 0){
+    total = iva > 0 ? (neto + iva) : Math.round(neto * 1.19);
+  } else if(total > 0 && !neto){
+    neto = iva > 0 ? (total - iva) : Math.round(total / 1.19);
   }
-  var iva = total > neto ? (total - neto) : Math.round(neto * 0.19);
+
+  if(!iva){
+    iva = (total >= neto) ? (total - neto) : Math.round(neto * 0.19);
+  }
 
   // 4. Factura de referencia
   var facturaRef = '';
@@ -2095,10 +2108,17 @@ async function procesarNotaCreditoPDF(file, recKey){
       rec.nc.fecha = data.fecha;
       touched.push('nc.fecha');
     }
-    if(data.neto > 0){
-      rec.nc.neto = data.neto;
-      rec.nc.iva = data.iva || Math.round(data.neto * 0.19);
-      rec.nc.total = data.total || (rec.nc.neto + rec.nc.iva);
+    if(data.neto > 0 || data.total > 0){
+      var nNeto = data.neto || 0;
+      var nTot = data.total || 0;
+      if(nNeto > 0 && (nTot <= 0 || nTot < nNeto)){
+        nTot = Math.round(nNeto * 1.19);
+      } else if(nTot > 0 && nNeto <= 0){
+        nNeto = Math.round(nTot / 1.19);
+      }
+      rec.nc.neto = nNeto;
+      rec.nc.iva = (nTot >= nNeto) ? (nTot - nNeto) : Math.round(nNeto * 0.19);
+      rec.nc.total = nTot;
       touched.push('nc.neto');
     }
     if(data.facturaRef){
@@ -2707,8 +2727,15 @@ function recNCRebaja(rec){
   if(!rec || rec.sinServicio || !rec.nc || !rec.nc.activa) return { activa:false, numero:'', fecha:'', neto:0, iva:0, total:0, facturaAfecta:'todas', facturaRefNumero:'', motivo:'' };
   var neto = Number(rec.nc.neto)||0;
   var total = Number(rec.nc.total)||0;
-  if(!total && neto) total = Math.round(neto * 1.19);
-  var iva = Number(rec.nc.iva) || (total - neto);
+  if(neto > 0 && (total <= 0 || total < neto)){
+    total = Math.round(neto * 1.19);
+  } else if(total > 0 && neto <= 0){
+    neto = Math.round(total / 1.19);
+  }
+  var iva = Number(rec.nc.iva) || (total >= neto ? (total - neto) : Math.round(neto * 0.19));
+  if(total >= neto && (neto + iva !== total) && iva === 0){
+    iva = total - neto;
+  }
   return {
     activa: true,
     numero: rec.nc.numero || '',
@@ -2864,12 +2891,30 @@ function allLines(filterFn){
   return out;
 }
 
+function sanitizeRecords(){
+  if(!state.records) return;
+  Object.keys(state.records).forEach(function(k){
+    var r = state.records[k];
+    if(!r) return;
+    if(!r.factura2) r.factura2 = blankFactura2();
+    if(!r.nc) r.nc = blankNC();
+    if(r.nc && r.nc.neto > 0 && (r.nc.total <= 0 || r.nc.total < r.nc.neto)){
+      r.nc.total = Math.round(r.nc.neto * 1.19);
+      r.nc.iva = r.nc.total - r.nc.neto;
+    }
+  });
+}
+
 function getRecord(clientId, periodo){ return state.records[recordKey(clientId, periodo)] || null; }
 function ensureRecord(clientId, periodo){
   var k = recordKey(clientId, periodo);
   if(!state.records[k]) state.records[k] = blankRecord(clientId, periodo);
   if(!state.records[k].factura2) state.records[k].factura2 = blankFactura2();
   if(!state.records[k].nc) state.records[k].nc = blankNC();
+  if(state.records[k].nc && state.records[k].nc.neto > 0 && (state.records[k].nc.total <= 0 || state.records[k].nc.total < state.records[k].nc.neto)){
+    state.records[k].nc.total = Math.round(state.records[k].nc.neto * 1.19);
+    state.records[k].nc.iva = state.records[k].nc.total - state.records[k].nc.neto;
+  }
   var _f2 = state.records[k].factura2; if(_f2.oc===undefined) _f2.oc=''; if(_f2.hes===undefined) _f2.hes='';
   if(!state.records[k].cubierta) state.records[k].cubierta = { activa:false, factura:'', periodo:'' };
   if(state.records[k].sinServicio === undefined) state.records[k].sinServicio = false;
@@ -2939,6 +2984,7 @@ function checkpointState(rec, client){
 
 /* ---------- Persistencia ---------- */
 function serializeState(){
+  sanitizeRecords();
   return JSON.stringify({ version:3, savedAt:new Date().toISOString(), clients:state.clients, records:state.records, periods:state.periods, tech:state.tech, entidades:state.entidades, adjuntos:state.adjuntos }, null, 1);
 }
 function loadFromObject(obj){
@@ -2949,6 +2995,7 @@ function loadFromObject(obj){
   state.tech = obj.tech || [];
   state.entidades = normalizeEntidades(obj.entidades);
   state.adjuntos = obj.adjuntos || [];
+  sanitizeRecords();
   sortPeriods();
   saveLocal();
   renderAll();
@@ -2956,6 +3003,7 @@ function loadFromObject(obj){
 }
 /* Autoguardado en el navegador (caché) y en la nube (si hay sesión) */
 function saveLocal(){
+  sanitizeRecords();
   try{ localStorage.setItem(LS_KEY, serializeState()); }catch(e){}
   if(cloud.user && !cloud.applying){ saveCloudDebounced(); }
 }
@@ -2966,6 +3014,7 @@ function loadLocal(){
       if(o && o.clients && o.records){
         state.clients=o.clients; state.records=o.records; state.periods=o.periods||[]; state.tech=o.tech||[];
         state.entidades=normalizeEntidades(o.entidades);
+        sanitizeRecords();
         sortPeriods(); return true;
       }
     }
@@ -4292,8 +4341,23 @@ function wireRecordModalEvents(){
       if(field === 'factura2.fechaFacturada' && rec.factura2.fechaFacturada){ rec.factura2.fechaVencimiento = addDaysISO(rec.factura2.fechaFacturada,30); touched.push('factura2.fechaVencimiento'); }
       if(field === 'factura2.factorizado' && val && !rec.factura2.factoringFecha){ rec.factura2.factoringFecha = todayISO(); touched.push('factura2.factoringFecha'); }
       if(field === 'factura2.pagado' && val && !rec.factura2.pagoFecha){ rec.factura2.pagoFecha = todayISO(); touched.push('factura2.pagoFecha'); }
-      if(field === 'nc.neto'){ rec.nc.iva = Math.round((Number(rec.nc.neto)||0)*0.19); rec.nc.total = (Number(rec.nc.neto)||0) + rec.nc.iva; }
-      if(field.indexOf('nc.')===0 && field!=='nc.activa'){ if((rec.nc.numero && String(rec.nc.numero).trim()) || (Number(rec.nc.neto)||0)>0){ rec.nc.activa = true; } }
+      if(field === 'nc.neto'){
+        var nNet = Number(rec.nc.neto) || 0;
+        rec.nc.iva = Math.round(nNet * 0.19);
+        rec.nc.total = nNet + rec.nc.iva;
+      }
+      if(field === 'nc.total'){
+        var nTot = Number(rec.nc.total) || 0;
+        if(nTot > 0 && !rec.nc.neto){
+          rec.nc.neto = Math.round(nTot / 1.19);
+          rec.nc.iva = nTot - rec.nc.neto;
+        }
+      }
+      if(field.indexOf('nc.')===0 && field!=='nc.activa'){
+        if((rec.nc.numero && String(rec.nc.numero).trim()) || (Number(rec.nc.neto)||0)>0 || (Number(rec.nc.total)||0)>0){
+          rec.nc.activa = true;
+        }
+      }
       syncModalDynamic(touched);
       if(evt === 'input') persistDebounced(); else persist();
     });
@@ -4309,18 +4373,20 @@ function syncModalDynamic(touchedFields){
   
   var computedNCEl = document.querySelector('#modalRegistro .computed-nc');
   if(computedNCEl && rec.nc){
+    var nc = recNCRebaja(rec);
     var brutoTot = recTotalFacturadoBruto(rec);
     var brutoNeto = (rec.factura.neto||0) + (segFactura(rec) ? (segFactura(rec).neto||0) : 0);
-    var ncNeto = Number(rec.nc.neto)||0;
-    var ncTot = Number(rec.nc.total) || (ncNeto ? Math.round(ncNeto*1.19) : 0);
+    var ncNeto = nc.neto;
+    var ncTot = nc.total;
+    var ncIva = nc.iva;
     var realTot = Math.max(0, brutoTot - (rec.nc.activa ? ncTot : 0));
     var realNeto = Math.max(0, brutoNeto - (rec.nc.activa ? ncNeto : 0));
 
-    if(rec.nc.activa && ncTot > 0){
+    if(rec.nc.activa && (ncTot > 0 || ncNeto > 0)){
       computedNCEl.style.display = 'flex';
       computedNCEl.innerHTML =
         '<div class="cnc-row"><span>📄 Facturado original:</span><span><strong>'+fmtMoney(brutoTot)+'</strong> ('+fmtMoney(brutoNeto)+' neto)</span></div>' +
-        '<div class="cnc-row" style="color:var(--red);"><span>🔻 Rebaja Nota de Crédito'+(rec.nc.numero?(' (N° '+esc(rec.nc.numero)+')'):'')+':</span><span><strong>-'+fmtMoney(ncTot)+'</strong> (-'+fmtMoney(ncNeto)+' neto)</span></div>' +
+        '<div class="cnc-row" style="color:var(--red);"><span>🔻 Rebaja Nota de Crédito'+(rec.nc.numero?(' (N° '+esc(rec.nc.numero)+')'):'')+':</span><span><strong>-'+fmtMoney(ncTot)+'</strong> (-'+fmtMoney(ncNeto)+' neto · IVA -'+fmtMoney(ncIva)+')</span></div>' +
         '<div class="cnc-row cnc-final"><span>💰 MONTO REAL EFECTIVO POR COBRAR:</span><span>'+fmtMoney(realTot)+' ('+fmtMoney(realNeto)+' neto)</span></div>';
     } else {
       computedNCEl.style.display = 'flex';
@@ -5266,6 +5332,7 @@ function applyCloudPayload(data){
     state.tech      = obj.tech || [];
     state.entidades = normalizeEntidades(obj.entidades);
     state.adjuntos  = obj.adjuntos || [];
+    sanitizeRecords();
     sortPeriods();
     try{ localStorage.setItem(LS_KEY, serializeState()); }catch(e){}
     renderAll();
