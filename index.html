@@ -2670,7 +2670,7 @@ var CHECKPOINT_STEPS = [
 /* Estados para Tecnología */
 var TECH_STATUS = {
   pendiente:   {label:'Pendiente',   css:'b-amber'},
-  facturado:   {label:'Facturado',   css:'b-blue'},
+  facturado:   {label:'Facturado (por cobrar)',   css:'b-blue'},
   pagado:      {label:'Pagado',      css:'b-green'},
   factorizado: {label:'Factorizado', css:'b-purple'},
   anulada:     {label:'Anulada',     css:'b-gray'}
@@ -2909,6 +2909,13 @@ function sanitizeRecords(){
       r.nc.iva = r.nc.total - r.nc.neto;
     }
   });
+  if(state.tech && Array.isArray(state.tech)){
+    state.tech.forEach(function(t){
+      if(t && t.enviadaSII === undefined){
+        t.enviadaSII = (t.estado === 'facturado' || t.estado === 'pagado' || t.estado === 'factorizado');
+      }
+    });
+  }
 }
 
 function getRecord(clientId, periodo){ return state.records[recordKey(clientId, periodo)] || null; }
@@ -3107,17 +3114,47 @@ var persistDebounced = debounce(persist, 400);
    TECNOLOGÍA (servicios esporádicos)
    ============================================================ */
 function getTech(id){ for(var i=0;i<state.tech.length;i++){ if(state.tech[i].id===id) return state.tech[i]; } return null; }
-function techEstadoAuto(t){ if(t.factura && (!t.estado || t.estado==='pendiente')) t.estado='facturado'; }
+function techEstadoAuto(t){
+  if(t.enviadaSII && (!t.estado || t.estado === 'pendiente')){
+    t.estado = 'facturado';
+  } else if(t.enviadaSII === false && t.estado === 'facturado'){
+    t.estado = 'pendiente';
+  }
+}
 /* Convierte un servicio de tecnología en una "línea" compatible con los KPIs/dashboard */
 function techLine(t){
-  var emit = (t.estado!=='anulada') && !!(t.factura || t.estado==='facturado' || t.estado==='pagado' || t.estado==='factorizado');
-  return { total:Number(t.total)||0, neto:Number(t.neto)||0, iva:Number(t.iva)||0, emitida:emit, factorizado:(t.estado==='factorizado'), pagado:(t.estado==='pagado'), venc:t.fechaVencimiento||'', fechaFac:t.fechaFactura||'', factFecha:'', entidad:t.entidad||'', numero:t.factura||'', oc:t.oc||'', hes:t.hes||'', pagoFecha:'', tipo:'Tecnología' };
+  var isSII = (t.enviadaSII !== undefined) ? !!t.enviadaSII : (t.estado === 'facturado' || t.estado === 'pagado' || t.estado === 'factorizado');
+  var emit = (t.estado !== 'anulada') && (t.estado === 'pagado' || t.estado === 'factorizado' || (t.estado === 'facturado' && isSII) || (isSII && !!t.factura));
+  return {
+    total: Number(t.total) || 0,
+    neto: Number(t.neto) || 0,
+    iva: Number(t.iva) || 0,
+    emitida: emit,
+    enviadaSII: isSII,
+    factorizado: (t.estado === 'factorizado'),
+    pagado: (t.estado === 'pagado'),
+    venc: t.fechaVencimiento || '',
+    fechaFac: t.fechaFactura || '',
+    factFecha: '',
+    entidad: t.entidad || '',
+    numero: t.factura || '',
+    oc: t.oc || '',
+    hes: t.hes || '',
+    pagoFecha: '',
+    tipo: 'Tecnología'
+  };
 }
 /* Traduce el estado de un servicio de tecnología a la misma clave que el filtro de Estado de cobranza */
 function techStatusKey(t){
-  if(t.estado==='anulada') return 'anulada';
-  var b = lineBucket(techLine(t)); // pagado / factorizado / facturado / vencido / otro
-  return (b==='otro') ? 'listo_facturar' : b;
+  if(t.estado === 'anulada') return 'anulada';
+  if(t.estado === 'pagado') return 'pagado';
+  if(t.estado === 'factorizado') return 'factorizado';
+  var isSII = (t.enviadaSII !== undefined) ? !!t.enviadaSII : (t.estado === 'facturado');
+  if(t.estado === 'facturado' && isSII){
+    if(t.fechaVencimiento && t.fechaVencimiento < todayISO()) return 'vencido';
+    return 'facturado';
+  }
+  return 'listo_facturar'; // Se agrupa como Pendiente en la vista
 }
 /* Badge de estado unificado: mismas etiquetas y colores que el módulo de Registro */
 function techBadge(t){
@@ -3146,17 +3183,18 @@ function filteredTech(){
 
 function renderTechKPIs(){
   var list = filteredTech();
-  var fac=0,pag=0,pend=0;
+  var fac=0, pag=0, pend=0;
   list.forEach(function(t){
     var tot = Number(t.total)||0;
-    if(t.estado!=='anulada') fac += tot;
-    if(t.estado==='pagado') pag += tot;
-    else if(t.estado==='facturado' || t.estado==='factorizado') pend += tot;
+    var isSII = (t.enviadaSII !== undefined) ? !!t.enviadaSII : (t.estado === 'facturado' || t.estado === 'pagado' || t.estado === 'factorizado');
+    if(t.estado !== 'anulada' && (isSII || t.estado === 'pagado' || t.estado === 'factorizado')) fac += tot;
+    if(t.estado === 'pagado') pag += tot;
+    else if(t.estado === 'factorizado' || (t.estado === 'facturado' && isSII)) pend += tot;
   });
   var kpis = [
     {cls:'k-facturado', lbl:'Total tecnología', val:fmtMoney(fac), sub:list.length+' servicios'},
     {cls:'k-pagado', lbl:'Pagado', val:fmtMoney(pag), sub:list.filter(function(t){return t.estado==='pagado';}).length+' servicios'},
-    {cls:'k-pendiente', lbl:'Por cobrar', val:fmtMoney(pend), sub:list.filter(function(t){return t.estado==='facturado'||t.estado==='factorizado';}).length+' servicios'},
+    {cls:'k-pendiente', lbl:'Por cobrar', val:fmtMoney(pend), sub:list.filter(function(t){return t.estado==='factorizado'||(t.estado==='facturado' && (t.enviadaSII!==false));}).length+' servicios'},
     {cls:'k-factorizado', lbl:'Factorizado', val:fmtMoney(list.filter(function(t){return t.estado==='factorizado';}).reduce(function(a,t){return a+(Number(t.total)||0);},0)), sub:''}
   ];
   document.getElementById('techKpiRow').innerHTML = kpis.map(function(k){
@@ -3197,7 +3235,8 @@ function openTechModal(id){ editingTechId = id || null; renderTechModal(); docum
 function closeTechModal(){ document.getElementById('overlayTech').classList.remove('show'); editingTechId=null; }
 function renderTechModal(){
   var isEdit = !!editingTechId;
-  var t = isEdit ? getTech(editingTechId) : {id:'',periodo:currentPeriodo(),rut:'',cliente:'',cotizacion:'',factura:'',oc:'',hes:'',neto:0,iva:0,total:0,estado:'pendiente',notas:'',fechaFactura:'',fechaVencimiento:'',entidad:''};
+  var t = isEdit ? getTech(editingTechId) : {id:'',periodo:currentPeriodo(),rut:'',cliente:'',cotizacion:'',factura:'',oc:'',hes:'',neto:0,iva:0,total:0,estado:'pendiente',enviadaSII:false,notas:'',fechaFactura:'',fechaVencimiento:'',entidad:''};
+  var isSII = (t.enviadaSII !== undefined) ? !!t.enviadaSII : (t.estado === 'facturado' || t.estado === 'pagado' || t.estado === 'factorizado');
   var estadoOpts = Object.keys(TECH_STATUS).map(function(k){ return '<option value="'+k+'" '+(t.estado===k?'selected':'')+'>'+TECH_STATUS[k].label+'</option>'; }).join('');
   var modal = document.getElementById('modalTech');
   modal.innerHTML =
@@ -3225,10 +3264,11 @@ function renderTechModal(){
         '<div class="field"><label>Monto neto</label><input type="text" inputmode="numeric" class="money-input" id="tf_neto" value="'+(t.neto ? formatThousands(t.neto) : '')+'" placeholder="0"></div>' +
       '</div>' +
       '<div class="computed" style="margin-top:10px;"><span>IVA (19%): '+fmtMoney(t.iva)+'</span><span>Total: '+fmtMoney(t.total)+'</span></div>' +
+      '<label class="check-row" style="margin-top:12px;"><input type="checkbox" id="tf_enviadaSII" '+(isSII?'checked':'')+'><span class="ctext">Factura enviada al SII</span><span class="csub"> — marca para pasar a facturado (por cobrar)</span></label>' +
       '<div class="field" style="margin-top:12px;"><label>Estado</label><select id="tf_estado">'+estadoOpts+'</select></div>' +
       '<div class="field" style="margin-top:12px;"><label>Entidad financiera <span style="font-weight:400;color:var(--slate-soft);">(si se factorizó · escribe para buscar)</span></label><input type="text" list="entidadesDatalist" id="tf_entidad" value="'+esc(t.entidad||'')+'" placeholder="Escribe o elige de la lista…" autocomplete="off"></div>' +
       '<div class="field" style="margin-top:12px;"><label>Notas / glosa</label><textarea id="tf_notas">'+esc(t.notas)+'</textarea></div>' +
-      '<p class="hint">Al ingresar un N° de factura, si el estado está en “Pendiente” pasará automáticamente a “Facturado”.</p>' +
+      '<p class="hint">Al marcar “Factura enviada al SII”, el estado cambiará automáticamente a “Facturado (por cobrar)”. Si no está enviada, quedará en “Pendiente”.</p>' +
       '<div class="section" style="margin-top:14px;"><div class="section-head"><h4>📎 Respaldos de este servicio (factura, OC, HES)</h4></div><div class="section-body">' +
         '<div class="adj-form" style="margin-bottom:10px;">' +
           '<div class="fgroup"><label>Archivo (PDF o imagen) <span style="font-weight:400;color:var(--blue);font-size:11px;">(⚡ Auto-completa si es factura PDF)</span></label><input type="file" id="tec_adjFile" accept=".pdf,image/*"></div>' +
@@ -3266,6 +3306,29 @@ function renderTechModal(){
   var fecfacEl = document.getElementById('tf_fecfac'), vtoEl = document.getElementById('tf_vto');
   fecfacEl.addEventListener('change', function(){ if(fecfacEl.value) vtoEl.value = addDaysISO(fecfacEl.value, 30); });
 
+  var enviadaSIIEl = document.getElementById('tf_enviadaSII');
+  var estadoEl = document.getElementById('tf_estado');
+
+  enviadaSIIEl.addEventListener('change', function(){
+    if(enviadaSIIEl.checked){
+      if(estadoEl.value === 'pendiente' || !estadoEl.value){
+        estadoEl.value = 'facturado';
+      }
+    } else {
+      if(estadoEl.value === 'facturado'){
+        estadoEl.value = 'pendiente';
+      }
+    }
+  });
+
+  estadoEl.addEventListener('change', function(){
+    if(estadoEl.value === 'facturado' || estadoEl.value === 'pagado' || estadoEl.value === 'factorizado'){
+      enviadaSIIEl.checked = true;
+    } else if(estadoEl.value === 'pendiente'){
+      enviadaSIIEl.checked = false;
+    }
+  });
+
   var tecScanInput = document.getElementById('tec_scanPdf');
   if(tecScanInput){
     tecScanInput.addEventListener('change', async function(){
@@ -3288,8 +3351,16 @@ function renderTechModal(){
               var iva = Math.round(data.neto * 0.19);
               modal.querySelector('.computed').innerHTML = '<span>IVA (19%): '+fmtMoney(iva)+'</span><span>Total: '+fmtMoney(data.neto+iva)+'</span>';
             }
-            if(data.esValidoSII && document.getElementById('tf_estado').value === 'pendiente'){
-              document.getElementById('tf_estado').value = 'facturado';
+            if(data.esValidoSII){
+              document.getElementById('tf_enviadaSII').checked = true;
+              if(document.getElementById('tf_estado').value === 'pendiente'){
+                document.getElementById('tf_estado').value = 'facturado';
+              }
+            } else {
+              document.getElementById('tf_enviadaSII').checked = false;
+              if(document.getElementById('tf_estado').value === 'facturado'){
+                document.getElementById('tf_estado').value = 'pendiente';
+              }
             }
             var details = [];
             if(data.numero) details.push('N° ' + data.numero);
@@ -3339,8 +3410,16 @@ function renderTechModal(){
                 var iva = Math.round(data.neto * 0.19);
                 modal.querySelector('.computed').innerHTML = '<span>IVA (19%): '+fmtMoney(iva)+'</span><span>Total: '+fmtMoney(data.neto+iva)+'</span>';
               }
-              if(data.esValidoSII && document.getElementById('tf_estado').value === 'pendiente'){
-                document.getElementById('tf_estado').value = 'facturado';
+              if(data.esValidoSII){
+                document.getElementById('tf_enviadaSII').checked = true;
+                if(document.getElementById('tf_estado').value === 'pendiente'){
+                  document.getElementById('tf_estado').value = 'facturado';
+                }
+              } else {
+                document.getElementById('tf_enviadaSII').checked = false;
+                if(document.getElementById('tf_estado').value === 'facturado'){
+                  document.getElementById('tf_estado').value = 'pendiente';
+                }
               }
             }
           } catch(e){ console.warn(e); }
@@ -3366,6 +3445,7 @@ function renderTechModal(){
 /* Lee el formulario de tecnología y guarda (crea o actualiza). Devuelve el id o null. */
 function readTechData(){
   var neto = parseThousands(document.getElementById('tf_neto').value);
+  var enviadaSII = !!document.getElementById('tf_enviadaSII').checked;
   return {
     periodo: document.getElementById('tf_periodo').value,
     rut: document.getElementById('tf_rut').value.trim(),
@@ -3375,6 +3455,7 @@ function readTechData(){
     oc: document.getElementById('tf_oc').value.trim(),
     hes: document.getElementById('tf_hes').value.trim(),
     neto: neto, iva: Math.round(neto*0.19), total: neto + Math.round(neto*0.19),
+    enviadaSII: enviadaSII,
     estado: document.getElementById('tf_estado').value,
     entidad: document.getElementById('tf_entidad').value.trim(),
     notas: document.getElementById('tf_notas').value.trim(),
@@ -3517,6 +3598,7 @@ var TECH_ALIAS = {
   iva:['iva'],
   total:['total','monto'],
   estado:['status','estado','status pago','estatus'],
+  sii:['sii','enviada sii','factura enviada al sii','enviada al sii','valida sii'],
   entidad:['entidad','entidad factoring','entidad financiera','entidad 2'],
   glosa:['glosa','notas','detalle']
 };
@@ -3708,6 +3790,8 @@ function processTechRows(rows){
     var estadoRaw = pick(nd, TECH_ALIAS.estado);
     var kind = classifyEstado(estadoRaw);
     var estado = kind==='pagado'?'pagado':kind==='factorizado'?'factorizado':kind==='anulado'?'anulada':(factura?'facturado':'pendiente');
+    var envSiiRaw = pick(nd, TECH_ALIAS.sii);
+    var enviadaSII = (envSiiRaw !== undefined && envSiiRaw !== null && envSiiRaw !== '') ? isAffirmative(envSiiRaw) : (estado === 'facturado' || estado === 'pagado' || estado === 'factorizado');
     var rec = {
       periodo: normPeriodo(pick(nd, TECH_ALIAS.periodo)) || currentPeriodo(),
       rut: String(pick(nd, TECH_ALIAS.rut)||'').trim(),
@@ -3716,7 +3800,9 @@ function processTechRows(rows){
       factura: factura,
       oc: String(pick(nd, TECH_ALIAS.oc)||'').replace(/\.0+$/,'').trim(),
       hes: String(pick(nd, TECH_ALIAS.hes)||'').replace(/\.0+$/,'').trim(),
-      neto:neto, iva:iva, total:total, estado:estado,
+      neto:neto, iva:iva, total:total,
+      enviadaSII: enviadaSII,
+      estado: estado,
       entidad: String(pick(nd, TECH_ALIAS.entidad)||'').trim(),
       fechaFactura: excelDateToISO(pick(nd, TECH_ALIAS.fecha)),
       fechaVencimiento: excelDateToISO(pick(nd, TECH_ALIAS.vencimiento)),
