@@ -2832,7 +2832,10 @@ function invoiceLines(rec){
   if(hasF1){
     lines.push({ tipo:'Principal', numero:rec.factura.numero||'', fechaFac:rec.factura.fechaFacturada||'', venc:rec.factura.fechaVencimiento||'',
       neto: Math.max(0, f1Neto - f1NcNeto), iva: Math.round(Math.max(0, f1Neto - f1NcNeto)*0.19), total: Math.max(0, f1Total - f1NcTot),
-      netoBruto: f1Neto, totalBruto: f1Total, ncRebaja: f1NcTot,
+      netoBruto: f1Neto, totalBruto: f1Total, ncRebaja: f1NcTot, ncNetoRebaja: f1NcNeto,
+      ncNumero: (nc.activa && f1NcTot > 0) ? (nc.numero || 'NC') : '',
+      ncFecha: (nc.activa && f1NcTot > 0) ? (nc.fecha || '') : '',
+      ncMotivo: (nc.activa && f1NcTot > 0) ? (nc.motivo || '') : '',
       enviadaSII:!!rec.factura.enviadaSII,
       factorizado:!!rec.factoring.factorizado, entidad:rec.factoring.entidad||'', factFecha:rec.factoring.fecha||'',
       pagado:!!rec.pago.pagado, pagoFecha:rec.pago.fecha||'', emitida:!!rec.factura.emitida,
@@ -2841,7 +2844,10 @@ function invoiceLines(rec){
   if(s){
     lines.push({ tipo:(s.tipo||'Segunda'), numero:s.numero||'', fechaFac:s.fechaFacturada||'', venc:s.fechaVencimiento||'',
       neto: Math.max(0, f2Neto - f2NcNeto), iva: Math.round(Math.max(0, f2Neto - f2NcNeto)*0.19), total: Math.max(0, f2Total - f2NcTot),
-      netoBruto: f2Neto, totalBruto: f2Total, ncRebaja: f2NcTot,
+      netoBruto: f2Neto, totalBruto: f2Total, ncRebaja: f2NcTot, ncNetoRebaja: f2NcNeto,
+      ncNumero: (nc.activa && f2NcTot > 0) ? (nc.numero || 'NC') : '',
+      ncFecha: (nc.activa && f2NcTot > 0) ? (nc.fecha || '') : '',
+      ncMotivo: (nc.activa && f2NcTot > 0) ? (nc.motivo || '') : '',
       enviadaSII:!!s.enviadaSII,
       factorizado:!!s.factorizado, entidad:s.entidad||'', factFecha:s.factoringFecha||'',
       pagado:!!s.pagado, pagoFecha:s.pagoFecha||'', emitida:true,
@@ -4784,6 +4790,9 @@ function exportDetalleXlsx(){
   var entries = allLinesTech(function(l){ return l.emitida; });
   if(!entries.length){ toast('No hay facturas emitidas.', 'err'); return; }
   var rows = entries.map(function(x){ var l=x.l, r=x.r, c=x.c; var ent=entidadByName(l.entidad);
+    var totBruto = (l.totalBruto !== undefined && l.totalBruto > 0) ? l.totalBruto : (l.total || 0);
+    var netoBruto = (l.netoBruto !== undefined && l.netoBruto > 0) ? l.netoBruto : (l.neto || 0);
+    var rebajaNC = l.ncRebaja || 0;
     return {
       'Mes servicio': fmtPeriodo(r.periodo),
       'Cliente': c.cliente, 'Servicio': c.servicio, 'RUT cliente': c.rut,
@@ -4791,13 +4800,20 @@ function exportDetalleXlsx(){
       'N° Factura': l.numero||'',
       'Fecha factura': l.fechaFac||'',
       'Vencimiento': l.venc||'',
-      'Neto': l.neto||0, 'IVA': l.iva||0, 'Total': l.total||0,
+      'Neto Factura': netoBruto,
+      'Total Factura': totBruto,
+      'N° Nota de Crédito': l.ncNumero || '',
+      'Rebaja NC': rebajaNC,
+      'Neto efectivo': l.neto || 0,
+      'IVA': l.iva || 0,
+      'Total a cobrar / final': l.total || 0,
       'Orden de Compra': l.oc||'', 'HES': l.hes||'',
       'Estado factura': lineBucket(l).toUpperCase(),
       'Factorizado': l.factorizado?'SI':'NO',
       'Entidad factoring': l.entidad||'', 'RUT entidad': ent?ent.rut:'',
       'Fecha factoring': l.factFecha||'',
       'Pagado': l.pagado?'SI':'NO', 'Fecha pago': l.pagoFecha||'',
+      'Motivo NC': l.ncMotivo||'',
       'Glosa': r.notas||''
     };
   });
@@ -4813,18 +4829,32 @@ function exportPorCobrarXlsx(){
   if(!entries.length){ toast('No hay cuentas por cobrar.', 'err'); return; }
   entries.sort(function(a,b){ return (a.l.venc||'').localeCompare(b.l.venc||''); });
   var rows = entries.map(function(x){ var l=x.l, r=x.r, c=x.c; var d=daysUntil(l.venc);
+    var totBruto = (l.totalBruto !== undefined && l.totalBruto > 0) ? l.totalBruto : (l.total || 0);
+    var rebajaNC = l.ncRebaja || 0;
     return {
       'Cliente': c.cliente, 'Servicio': c.servicio, 'RUT cliente': c.rut,
       'Mes servicio': fmtPeriodo(r.periodo),
       'Tipo factura': l.tipo,
-      'N° Factura': l.numero||'', 'Total': l.total||0,
+      'N° Factura': l.numero||'',
+      'Total Factura': totBruto,
+      'N° Nota de Crédito': l.ncNumero || '',
+      'Descuento NC': rebajaNC,
+      'Total a cobrar': l.total||0,
       'Fecha factura': l.fechaFac||'', 'Vencimiento': l.venc||'',
       'Días (+ por vencer / - vencida)': (d===null?'':d),
-      'Situación': (d===null?'—':(d<0?'VENCIDA':(d<=7?'Por vencer':'Vigente')))
+      'Situación': (d===null?'—':(d<0?'VENCIDA':(d<=7?'Por vencer':'Vigente'))),
+      'Motivo NC': l.ncMotivo || ''
     };
   });
-  var total = rows.reduce(function(a,r){ return a+(r['Total']||0); },0);
-  rows.push({'Cliente':'TOTAL','Total':total});
+  var totalOriginal = rows.reduce(function(a,r){ return a+(r['Total Factura']||0); },0);
+  var totalNC = rows.reduce(function(a,r){ return a+(r['Descuento NC']||0); },0);
+  var totalCobrar = rows.reduce(function(a,r){ return a+(r['Total a cobrar']||0); },0);
+  rows.push({
+    'Cliente':'TOTAL',
+    'Total Factura': totalOriginal,
+    'Descuento NC': totalNC,
+    'Total a cobrar': totalCobrar
+  });
   var wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Por cobrar');
   saveWb(wb, 'cuentas-por-cobrar.xlsx');
