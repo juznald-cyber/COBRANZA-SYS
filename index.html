@@ -2142,6 +2142,9 @@ async function procesarNotaCreditoPDF(file, recKey){
     if(data.esValidoSII){
       rec.nc.enviadaSII = true;
       touched.push('nc.enviadaSII');
+    } else {
+      rec.nc.enviadaSII = false;
+      touched.push('nc.enviadaSII');
     }
 
     syncModalDynamic(touched);
@@ -2697,7 +2700,7 @@ var editingEntidadIndex = null;
 function recordKey(clientId, periodo){ return clientId + '__' + periodo; }
 
 function blankFactura2(){ return { activa:false, tipo:'Anticipo', numero:'', fechaFacturada:'', fechaVencimiento:'', neto:0, iva:0, total:0, enviadaSII:false, factorizado:false, entidad:'', factoringFecha:'', pagado:false, pagoFecha:'', oc:'', hes:'' }; }
-function blankNC(){ return { activa:false, numero:'', fecha:'', neto:0, iva:0, total:0, facturaAfecta:'todas', facturaRefNumero:'', motivo:'', enviadaSII:true }; }
+function blankNC(){ return { activa:false, numero:'', fecha:'', neto:0, iva:0, total:0, facturaAfecta:'todas', facturaRefNumero:'', motivo:'', enviadaSII:false }; }
 function blankRecord(clientId, periodo){
   return {
     clientId: clientId,
@@ -2904,6 +2907,9 @@ function sanitizeRecords(){
     if(!r) return;
     if(!r.factura2) r.factura2 = blankFactura2();
     if(!r.nc) r.nc = blankNC();
+    if(r.nc && (!r.nc.activa && !r.nc.numero && (Number(r.nc.neto)||0) <= 0 && (Number(r.nc.total)||0) <= 0)){
+      r.nc.enviadaSII = false;
+    }
     if(r.nc && r.nc.neto > 0 && (r.nc.total <= 0 || r.nc.total < r.nc.neto)){
       r.nc.total = Math.round(r.nc.neto * 1.19);
       r.nc.iva = r.nc.total - r.nc.neto;
@@ -2924,6 +2930,9 @@ function ensureRecord(clientId, periodo){
   if(!state.records[k]) state.records[k] = blankRecord(clientId, periodo);
   if(!state.records[k].factura2) state.records[k].factura2 = blankFactura2();
   if(!state.records[k].nc) state.records[k].nc = blankNC();
+  if(state.records[k].nc && (!state.records[k].nc.activa && !state.records[k].nc.numero && (Number(state.records[k].nc.neto)||0) <= 0 && (Number(state.records[k].nc.total)||0) <= 0)){
+    state.records[k].nc.enviadaSII = false;
+  }
   if(state.records[k].nc && state.records[k].nc.neto > 0 && (state.records[k].nc.total <= 0 || state.records[k].nc.total < state.records[k].nc.neto)){
     state.records[k].nc.total = Math.round(state.records[k].nc.neto * 1.19);
     state.records[k].nc.iva = state.records[k].nc.total - state.records[k].nc.neto;
