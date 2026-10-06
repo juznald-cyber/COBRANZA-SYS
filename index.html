@@ -1355,6 +1355,117 @@ body:not(.theme-dark) .bar-track { background: rgba(0, 0, 0, 0.07); }
 .dias-chip.venc { background: var(--red-pale); color: var(--red); }
 .dias-chip.pronto { background: var(--amber-pale); color: var(--amber); }
 
+/* Year filter pills in Resumen */
+.year-pills {
+  display: inline-flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--line-strong);
+  padding: 3px 4px;
+  border-radius: var(--radius-pill);
+  flex-wrap: wrap;
+  align-items: center;
+}
+body:not(.theme-dark) .year-pills {
+  background: rgba(0, 0, 0, 0.05);
+}
+.year-pill-btn {
+  background: transparent;
+  border: none;
+  padding: 4px 11px;
+  font-weight: 600;
+  color: var(--slate);
+  font-size: 11.5px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.year-pill-btn:hover {
+  color: var(--ink-soft);
+}
+.year-pill-btn.active {
+  background: #ffffff;
+  color: #000000;
+  font-weight: 700;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+}
+body:not(.theme-dark) .year-pill-btn.active {
+  background: #1d1d1f;
+  color: #ffffff;
+}
+
+/* Period header delete button */
+.th-period-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  position: relative;
+  min-width: 90px;
+}
+.th-del-period {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(255, 69, 58, 0.25);
+  color: var(--red);
+  font-size: 11px;
+  line-height: 14px;
+  text-align: center;
+  display: none;
+  cursor: pointer;
+  transition: all .15s ease;
+  font-weight: 800;
+}
+.matrix thead th:hover .th-del-period {
+  display: block;
+}
+.th-del-period:hover {
+  background: var(--red);
+  color: #ffffff;
+  transform: scale(1.15);
+}
+
+/* Periodos modal list */
+.periodos-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 6px;
+  padding-right: 4px;
+}
+.periodo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  transition: background .12s ease;
+}
+body:not(.theme-dark) .periodo-item {
+  background: rgba(0, 0, 0, 0.03);
+}
+.periodo-item:hover {
+  background: var(--panel-hover);
+  border-color: var(--line-strong);
+}
+.periodo-item-info strong {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.periodo-item-info span {
+  font-size: 11.5px;
+  color: var(--slate);
+}
+
 /* ---------- Apple ID / macOS Login Screen ---------- */
 .login-screen {
   position: fixed;
@@ -1600,9 +1711,12 @@ body:not(.theme-dark) .bar-track { background: rgba(0, 0, 0, 0.07); }
 
   <div class="tab-panel" id="tab-resumen">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
-      <p style="color:var(--slate);font-size:12.5px;margin:0;">Estado de cada cliente/servicio por periodo. <b>Clic</b> en una celda para abrir el registro · <b>clic derecho</b> para marcar el mes como “Sin servicio”.</p>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <p style="color:var(--slate);font-size:12.5px;margin:0;">Estado de cada cliente/servicio por periodo. <b>Clic</b> para abrir · <b>clic derecho</b> para “Sin servicio”.</p>
+        <div class="year-pills" id="matrixYearPills"></div>
+      </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-sm" id="btnAddPeriodo">+ Agregar periodo</button>
+        <button class="btn btn-sm" id="btnAddPeriodo">📅 Gestionar periodos</button>
         <button class="btn btn-amber btn-sm" id="btnExportXls">⬇ Exportar Excel</button>
         <button class="btn btn-sm" id="btnExportCsv">CSV</button>
       </div>
@@ -4200,13 +4314,52 @@ function renderTable(){
 }
 
 /* ---------- Render: matriz resumen ---------- */
+var matrixYearFilter = 'all';
+
+function getMatrixYears(){
+  var years = {};
+  (state.periods || []).forEach(function(p){
+    if(p && p.length >= 4){
+      var y = p.substring(0, 4);
+      years[y] = (years[y] || 0) + 1;
+    }
+  });
+  return years;
+}
+
+function renderMatrixYearBar(){
+  var box = document.getElementById('matrixYearPills');
+  if(!box) return;
+  var yearsObj = getMatrixYears();
+  var yearKeys = Object.keys(yearsObj).sort();
+  if(yearKeys.length <= 1 && (!matrixYearFilter || matrixYearFilter === 'all')){
+    box.innerHTML = '';
+    return;
+  }
+  var html = '<button class="year-pill-btn '+(matrixYearFilter==='all'?'active':'')+'" data-year="all">Todos ('+(state.periods||[]).length+' meses)</button>';
+  yearKeys.forEach(function(y){
+    html += '<button class="year-pill-btn '+(matrixYearFilter===y?'active':'')+'" data-year="'+y+'">'+y+' ('+yearsObj[y]+' '+(yearsObj[y]===1?'mes':'meses')+')</button>';
+  });
+  box.innerHTML = html;
+  Array.prototype.forEach.call(box.querySelectorAll('.year-pill-btn'), function(btn){
+    btn.addEventListener('click', function(){
+      matrixYearFilter = btn.getAttribute('data-year');
+      renderMatrix();
+    });
+  });
+}
+
 var STATUS_DOT_COLOR = { sin_prefactura:'var(--gray)', prefactura_enviada:'var(--slate-soft)', esperando_oc:'var(--amber)', esperando_hes:'var(--amber-deep)', listo_facturar:'var(--orange)', facturado:'var(--blue)', vencido:'var(--red)', factorizado:'var(--purple)', pagado:'var(--green)', cubierta:'#1F9E93', sin_servicio:'var(--slate-soft)' };
 var STATUS_SHORT = { sin_prefactura:'—', prefactura_enviada:'PF', esperando_oc:'OC', esperando_hes:'HES', listo_facturar:'LST', facturado:'FAC', vencido:'VNC', factorizado:'FZD', pagado:'PAG', cubierta:'REF', sin_servicio:'S/S' };
 function renderMatrix(){
+  renderMatrixYearBar();
   var clientsSorted = state.clients.filter(function(c){return c.activo!==false;}).slice().sort(function(a,b){ return a.cliente.localeCompare(b.cliente) || a.servicio.localeCompare(b.servicio); });
   var table = document.getElementById('matrixTable');
   var allPeriods = state.periods.slice().sort();
-  if(allPeriods.length === 0){ table.innerHTML = '<tr><td style="padding:40px;text-align:center;color:var(--slate-soft);">Aún no hay periodos.</td></tr>'; return; }
+  if(matrixYearFilter && matrixYearFilter !== 'all'){
+    allPeriods = allPeriods.filter(function(p){ return p.indexOf(matrixYearFilter+'-') === 0; });
+  }
+  if(allPeriods.length === 0){ table.innerHTML = '<tr><td style="padding:40px;text-align:center;color:var(--slate-soft);">No hay periodos '+(matrixYearFilter!=='all'?('para el año '+matrixYearFilter):'registrados')+'.</td></tr>'; return; }
   /* Aplicar filtros: periodo limita columnas; cliente/estado/buscar limitan filas */
   var periods = filters.periodo ? allPeriods.filter(function(p){ return p === filters.periodo; }) : allPeriods;
   var hasRecFilter = !!(filters.estado || filters.buscar);
@@ -4221,7 +4374,12 @@ function renderMatrix(){
     table.innerHTML = '<tr><td style="padding:40px;text-align:center;color:var(--slate-soft);">No hay registros que coincidan con los filtros aplicados.</td></tr>';
     return;
   }
-  var thead = '<thead><tr><th class="sticky-col row-label">Cliente / Servicio</th>' + periods.map(function(p){ return '<th>'+fmtPeriodo(p).replace(' ', '<br>')+'</th>'; }).join('') + '</tr></thead>';
+  var thead = '<thead><tr><th class="sticky-col row-label">Cliente / Servicio</th>' + periods.map(function(p){
+    return '<th><div class="th-period-header">' +
+      '<span>'+fmtPeriodo(p).replace(' ', '<br>')+'</span>' +
+      '<span class="th-del-period" data-delperiod="'+p+'" title="Eliminar periodo '+fmtPeriodo(p)+'">×</span>' +
+    '</div></th>';
+  }).join('') + '</tr></thead>';
   var totalsByPeriod = {}; periods.forEach(function(p){ totalsByPeriod[p] = {facturado:0}; });
   var rows = clientsSorted.map(function(client){
     var cells = periods.map(function(p){
@@ -4255,6 +4413,12 @@ function renderMatrix(){
   Array.prototype.forEach.call(table.querySelectorAll('.matrix-cell'), function(td){
     td.addEventListener('click', function(){ openRecordModal(td.getAttribute('data-client'), td.getAttribute('data-periodo')); });
     td.addEventListener('contextmenu', function(e){ e.preventDefault(); showMatrixMenu(e.clientX, e.clientY, td.getAttribute('data-client'), td.getAttribute('data-periodo')); });
+  });
+  Array.prototype.forEach.call(table.querySelectorAll('.th-del-period'), function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      deletePeriodo(btn.getAttribute('data-delperiod'));
+    });
   });
 }
 /* Menú rápido en la celda del resumen (clic derecho / mantener presionado) */
@@ -4633,13 +4797,92 @@ function renderClientModal(){
   if(isEdit){ document.getElementById('btnDeleteClient').onclick = function(){ if(confirm('¿Eliminar este cliente/servicio? También se perderán sus registros asociados.')){ state.clients = state.clients.filter(function(x){ return x.id !== editingClientId; }); Object.keys(state.records).forEach(function(k){ if(state.records[k].clientId === editingClientId) delete state.records[k]; }); closeClientModal(); toast('Cliente eliminado.', 'ok'); persist(); } }; }
 }
 
-/* ---------- Modal: agregar periodo ---------- */
+function deletePeriodo(p){
+  if(!p) return;
+  var recKeys = Object.keys(state.records).filter(function(k){ return state.records[k].periodo === p; });
+  var count = recKeys.length;
+  var msg = count > 0 
+    ? ('¿Eliminar el periodo "' + fmtPeriodo(p) + '" ('+p+')?\n\nAdvertencia: Contiene ' + count + ' registro(s) de facturación asociados que también serán eliminados.')
+    : ('¿Eliminar el periodo "' + fmtPeriodo(p) + '" ('+p+')?');
+  if(confirm(msg)){
+    recKeys.forEach(function(k){ delete state.records[k]; });
+    state.periods = state.periods.filter(function(x){ return x !== p; });
+    sortPeriods();
+    persist();
+    renderAll();
+    if(document.getElementById('overlayPeriodo').classList.contains('show')){
+      openPeriodoModal();
+    }
+    toast('Periodo ' + fmtPeriodo(p) + ' eliminado.', 'ok');
+  }
+}
+
+/* ---------- Modal: gestionar periodos (agregar y eliminar) ---------- */
 function openPeriodoModal(){
   var modal = document.getElementById('modalPeriodo');
-  modal.innerHTML = '<div class="modal-head"><div><h2>Agregar periodo</h2><p>Se agrega como columna en el resumen.</p></div><button class="modal-close" id="btnClosePeriodo">&times;</button></div><div class="modal-body"><div class="field"><label>Mes</label><input type="month" id="pf_periodo" value="'+currentPeriodo()+'"></div></div><div class="modal-foot"><span></span><div style="display:flex;gap:8px;"><button class="btn" id="btnCancelPeriodo">Cancelar</button><button class="btn btn-primary" id="btnSavePeriodo">Agregar</button></div></div>';
+  var periodsSorted = state.periods.slice().sort().reverse();
+  
+  var listHtml = periodsSorted.map(function(p){
+    var recs = Object.keys(state.records).filter(function(k){ return state.records[k].periodo === p; });
+    var tot = recs.reduce(function(acc, k){ return acc + recTotalFacturado(state.records[k]); }, 0);
+    var infoTxt = recs.length 
+      ? (recs.length + ' cliente(s) · Facturado: ' + fmtMoney(tot))
+      : 'Sin registros de facturación';
+    return '<div class="periodo-item">' +
+      '<div class="periodo-item-info">' +
+        '<strong>' + fmtPeriodo(p) + ' <span style="font-size:11px;opacity:.7;font-weight:400;font-family:monospace;">(' + p + ')</span></strong>' +
+        '<span>' + infoTxt + '</span>' +
+      '</div>' +
+      '<button class="btn btn-ghost btn-sm btn-danger-text" data-delperiod="'+p+'" title="Eliminar periodo">🗑 Eliminar</button>' +
+    '</div>';
+  }).join('');
+
+  modal.innerHTML = 
+    '<div class="modal-head">' +
+      '<div><h2>Gestionar periodos de facturación</h2>' +
+      '<p>Agrega nuevos meses o elimina periodos que ya no utilices.</p></div>' +
+      '<button class="modal-close" id="btnClosePeriodo">&times;</button>' +
+    '</div>' +
+    '<div class="modal-body">' +
+      '<div class="section">' +
+        '<div class="section-head"><h4>+ Agregar nuevo periodo</h4></div>' +
+        '<div class="section-body">' +
+          '<div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">' +
+            '<div class="field" style="flex:1;min-width:180px;"><label>Selecciona el mes y año</label><input type="month" id="pf_periodo" value="'+currentPeriodo()+'"></div>' +
+            '<button class="btn btn-primary" id="btnSavePeriodo" style="height:38px;">+ Agregar periodo</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="section" style="margin-top:14px;">' +
+        '<div class="section-head"><h4>Periodos existentes ('+state.periods.length+')</h4></div>' +
+        '<div class="section-body" style="padding:10px 14px;">' +
+          (periodsSorted.length ? '<div class="periodos-list">'+listHtml+'</div>' : '<p style="color:var(--slate-soft);font-size:12.5px;">No hay periodos creados.</p>') +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="modal-foot"><span></span><button class="btn btn-primary" id="btnCancelPeriodo">Listo</button></div>';
+
   document.getElementById('btnClosePeriodo').onclick = closePeriodoModal;
   document.getElementById('btnCancelPeriodo').onclick = closePeriodoModal;
-  document.getElementById('btnSavePeriodo').onclick = function(){ var p = document.getElementById('pf_periodo').value; if(!p){ toast('Elige un mes.', 'err'); return; } if(state.periods.indexOf(p) === -1){ state.periods.push(p); sortPeriods(); toast('Periodo agregado.', 'ok'); } else toast('Ese periodo ya existe.', 'err'); closePeriodoModal(); persist(); };
+  document.getElementById('btnSavePeriodo').onclick = function(){
+    var p = document.getElementById('pf_periodo').value;
+    if(!p){ toast('Elige un mes.', 'err'); return; }
+    if(state.periods.indexOf(p) === -1){
+      state.periods.push(p);
+      sortPeriods();
+      persist();
+      renderAll();
+      openPeriodoModal();
+      toast('Periodo ' + fmtPeriodo(p) + ' agregado.', 'ok');
+    } else {
+      toast('Ese periodo ya existe.', 'err');
+    }
+  };
+  Array.prototype.forEach.call(modal.querySelectorAll('[data-delperiod]'), function(btn){
+    btn.addEventListener('click', function(){
+      deletePeriodo(btn.getAttribute('data-delperiod'));
+    });
+  });
   document.getElementById('overlayPeriodo').classList.add('show');
 }
 function closePeriodoModal(){ document.getElementById('overlayPeriodo').classList.remove('show'); }
