@@ -2351,6 +2351,15 @@ async function procesarNotaCreditoPDF(file, recKey){
       touched.push('nc.enviadaSII');
     }
 
+    if(rec.factoring && rec.factoring.factorizado){
+      rec.factoring.monto = recFactura1TotalRebajada(rec);
+      touched.push('factoring.monto');
+    }
+    if(rec.pago && rec.pago.pagado){
+      rec.pago.monto = recFactura1TotalRebajada(rec);
+      touched.push('pago.monto');
+    }
+
     syncModalDynamic(touched);
     persist();
 
@@ -2972,6 +2981,18 @@ function recTotalFacturado(rec){
     return Math.max(0, bruto - nc.total);
   }
   return bruto;
+}
+function recFactura1TotalRebajada(rec){
+  if(!rec || !rec.factura) return 0;
+  var f1Tot = Number(rec.factura.total) || 0;
+  var nc = recNCRebaja(rec);
+  if(nc.activa && nc.total > 0){
+    if(nc.facturaAfecta === '1' || nc.facturaAfecta === 'todas' || !segFactura(rec)){
+      var rebaja = Math.min(f1Tot, nc.total);
+      return Math.max(0, f1Tot - rebaja);
+    }
+  }
+  return f1Tot;
 }
 function recFacturaNums(rec){
   if(!rec || rec.sinServicio) return '';
@@ -3903,8 +3924,8 @@ function applyPrimary(rec, p){
     if(p.fecha){ rec.factura.fechaFacturada=p.fecha; if(!rec.factura.fechaVencimiento) rec.factura.fechaVencimiento=addDaysISO(p.fecha,30); }
     rec.factura.neto=p.neto; rec.factura.iva=p.iva; rec.factura.total=p.total; rec.factura.enviadaSII=true;
   }
-  if(p.kind==='pagado'){ rec.pago.pagado=true; if(!rec.pago.monto) rec.pago.monto=rec.factura.total; }
-  else if(p.kind==='factorizado'){ rec.factoring.factorizado=true; if(p.entidad) rec.factoring.entidad=String(p.entidad).trim(); if(!rec.factoring.monto) rec.factoring.monto=rec.factura.total; }
+  if(p.kind==='pagado'){ rec.pago.pagado=true; if(!rec.pago.monto) rec.pago.monto=recFactura1TotalRebajada(rec); }
+  else if(p.kind==='factorizado'){ rec.factoring.factorizado=true; if(p.entidad) rec.factoring.entidad=String(p.entidad).trim(); if(!rec.factoring.monto) rec.factoring.monto=recFactura1TotalRebajada(rec); }
   else if(p.kind==='reclamado'){ rec.respuesta.estado='refacturada'; }
   if(p.glosa) rec.notas = rec.notas ? (rec.notas+' | '+p.glosa) : p.glosa;
 }
@@ -3932,6 +3953,12 @@ function applyNC(rec, p){
   if(p.facturaRefNumero) rec.nc.facturaRefNumero = p.facturaRefNumero;
   if(p.motivo) rec.nc.motivo = p.motivo;
   rec.nc.enviadaSII = true;
+  if(rec.factoring && rec.factoring.factorizado){
+    rec.factoring.monto = recFactura1TotalRebajada(rec);
+  }
+  if(rec.pago && rec.pago.pagado){
+    rec.pago.monto = recFactura1TotalRebajada(rec);
+  }
 }
 function makeSpilloverClient(cliente, servicio, rut){
   var nc = {id:uid('c'), rut:String(rut||''), cliente:String(cliente).trim(), servicio:(String(servicio||'GENERAL').trim().toUpperCase()+' (EXTRA)'), contacto:'', correo:'', requiereOC:true, requiereHES:false, activo:true};
@@ -4680,7 +4707,12 @@ function wireRecordModalEvents(){
       else val = el.value;
       setPath(rec, field, val);
       var touched = [];
-      if(field === 'factura.neto'){ rec.factura.iva = Math.round(rec.factura.neto*0.19); rec.factura.total = rec.factura.neto + rec.factura.iva; }
+      if(field === 'factura.neto'){ 
+        rec.factura.iva = Math.round(rec.factura.neto*0.19); 
+        rec.factura.total = rec.factura.neto + rec.factura.iva; 
+        if(rec.factoring.factorizado){ rec.factoring.monto = recFactura1TotalRebajada(rec); touched.push('factoring.monto'); }
+        if(rec.pago.pagado){ rec.pago.monto = recFactura1TotalRebajada(rec); touched.push('pago.monto'); }
+      }
       if(field === 'factura.fechaFacturada' && rec.factura.fechaFacturada){ rec.factura.fechaVencimiento = addDaysISO(rec.factura.fechaFacturada,30); touched.push('factura.fechaVencimiento'); }
       if(field === 'prefactura.enviada' && val && !rec.prefactura.fecha){ rec.prefactura.fecha = todayISO(); touched.push('prefactura.fecha'); }
       if(field === 'oc.recibida' && val && !rec.oc.fecha){ rec.oc.fecha = todayISO(); touched.push('oc.fecha'); }
@@ -4688,9 +4720,9 @@ function wireRecordModalEvents(){
       if(field === 'factura.emitida' && val && !rec.factura.fechaFacturada){ rec.factura.fechaFacturada = todayISO(); rec.factura.fechaVencimiento = addDaysISO(rec.factura.fechaFacturada,30); touched.push('factura.fechaFacturada','factura.fechaVencimiento'); }
       if(field === 'factura.enviadaSII' && val && !rec.factura.fechaEnvioSII){ rec.factura.fechaEnvioSII = todayISO(); touched.push('factura.fechaEnvioSII'); }
       if(field === 'factoring.factorizado' && val && !rec.factoring.fecha){ rec.factoring.fecha = todayISO(); touched.push('factoring.fecha'); }
-      if(field === 'factoring.factorizado' && val && !rec.factoring.monto){ rec.factoring.monto = rec.factura.total; touched.push('factoring.monto'); }
+      if(field === 'factoring.factorizado' && val){ rec.factoring.monto = recFactura1TotalRebajada(rec); touched.push('factoring.monto'); }
       if(field === 'pago.pagado' && val && !rec.pago.fecha){ rec.pago.fecha = todayISO(); touched.push('pago.fecha'); }
-      if(field === 'pago.pagado' && val && !rec.pago.monto){ rec.pago.monto = rec.factura.total; touched.push('pago.monto'); }
+      if(field === 'pago.pagado' && val){ rec.pago.monto = recFactura1TotalRebajada(rec); touched.push('pago.monto'); }
       if(field === 'factura2.neto'){ rec.factura2.iva = Math.round(rec.factura2.neto*0.19); rec.factura2.total = rec.factura2.neto + rec.factura2.iva; }
       if(field.indexOf('factura2.')===0 && field!=='factura2.activa'){ if((rec.factura2.numero && String(rec.factura2.numero).trim()) || (Number(rec.factura2.neto)||0)>0){ rec.factura2.activa = true; } }
       if(field === 'factura2.fechaFacturada' && rec.factura2.fechaFacturada){ rec.factura2.fechaVencimiento = addDaysISO(rec.factura2.fechaFacturada,30); touched.push('factura2.fechaVencimiento'); }
@@ -4700,6 +4732,8 @@ function wireRecordModalEvents(){
         var nNet = Number(rec.nc.neto) || 0;
         rec.nc.iva = Math.round(nNet * 0.19);
         rec.nc.total = nNet + rec.nc.iva;
+        if(rec.factoring.factorizado){ rec.factoring.monto = recFactura1TotalRebajada(rec); touched.push('factoring.monto'); }
+        if(rec.pago.pagado){ rec.pago.monto = recFactura1TotalRebajada(rec); touched.push('pago.monto'); }
       }
       if(field === 'nc.total'){
         var nTot = Number(rec.nc.total) || 0;
@@ -4707,11 +4741,17 @@ function wireRecordModalEvents(){
           rec.nc.neto = Math.round(nTot / 1.19);
           rec.nc.iva = nTot - rec.nc.neto;
         }
+        if(rec.factoring.factorizado){ rec.factoring.monto = recFactura1TotalRebajada(rec); touched.push('factoring.monto'); }
+        if(rec.pago.pagado){ rec.pago.monto = recFactura1TotalRebajada(rec); touched.push('pago.monto'); }
       }
       if(field.indexOf('nc.')===0 && field!=='nc.activa'){
         if((rec.nc.numero && String(rec.nc.numero).trim()) || (Number(rec.nc.neto)||0)>0 || (Number(rec.nc.total)||0)>0){
           rec.nc.activa = true;
         }
+      }
+      if(field === 'nc.activa' || field === 'nc.facturaAfecta'){
+        if(rec.factoring.factorizado){ rec.factoring.monto = recFactura1TotalRebajada(rec); touched.push('factoring.monto'); }
+        if(rec.pago.pagado){ rec.pago.monto = recFactura1TotalRebajada(rec); touched.push('pago.monto'); }
       }
       syncModalDynamic(touched);
       if(evt === 'input') persistDebounced(); else persist();
