@@ -1585,7 +1585,28 @@ body:not(.theme-dark) .periodo-item {
   .kpis { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .kpis .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
   #techKpiRow { grid-template-columns: repeat(2, 1fr) !important; }
-  .cliente-card { grid-template-columns: 1fr; gap: 8px; }
+  .cliente-card {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-areas:
+      "info info edit"
+      "rut contact contact"
+      "toc1 toc2 toc3";
+    gap: 8px 10px;
+  }
+  .cliente-card > div:nth-child(1) { grid-area: info; min-width: 0; }
+  .cliente-card > div:nth-child(7) { grid-area: edit; justify-self: end; align-self: start; }
+  .cliente-card .crut { grid-area: rut; min-width: 0; }
+  .cliente-card .ccontact { grid-area: contact; min-width: 0; text-align: right; overflow-wrap: anywhere; }
+  .cliente-card > div:nth-child(4) { grid-area: toc1; }
+  .cliente-card > div:nth-child(5) { grid-area: toc2; }
+  .cliente-card > div:nth-child(6) { grid-area: toc3; }
+  .cliente-card .btn-edit-client {
+    background: var(--amber-pale);
+    color: var(--amber);
+    border: 1px solid rgba(255, 159, 10, 0.35);
+    font-weight: 600;
+    padding: 6px 12px;
+  }
   .cliente-head-row { display: none; }
   .two-col { grid-template-columns: 1fr; gap: 14px; }
   .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -1883,6 +1904,17 @@ body:not(.theme-dark) .periodo-item {
   }
 
   /* 7. Clientes y Respaldos en móvil */
+  #tab-clientes > div:nth-child(2) {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 10px;
+  }
+  #tab-clientes #btnNuevoCliente {
+    width: 100%;
+    justify-content: center;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
   #tab-clientes .dash-section > div:last-child {
     flex-direction: column;
   }
@@ -1893,8 +1925,78 @@ body:not(.theme-dark) .periodo-item {
     max-width: none !important;
   }
   .cliente-card {
-    padding: 14px;
-    gap: 8px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "info edit"
+      "rut contact"
+      "toggles toggles";
+    padding: 13px 14px;
+    gap: 8px 10px;
+    position: relative;
+    overflow: hidden;
+    max-width: 100%;
+  }
+  .cliente-card > div:nth-child(1) {
+    grid-area: info;
+    min-width: 0;
+  }
+  .cliente-card .cname,
+  .cliente-card .cservicio {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .cliente-card > div:nth-child(7) {
+    grid-area: edit;
+    justify-self: end;
+    align-self: start;
+  }
+  .cliente-card .btn-edit-client {
+    background: var(--amber-pale);
+    color: var(--amber);
+    border: 1px solid rgba(255, 159, 10, 0.35);
+    font-weight: 600;
+    padding: 6px 12px;
+  }
+  .cliente-card .crut {
+    grid-area: rut;
+    font-size: 11.5px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .cliente-card .ccontact {
+    grid-area: contact;
+    font-size: 11.5px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    text-align: right;
+  }
+  .cliente-card > .toggle-oc {
+    grid-column: auto;
+  }
+  /* Agrupar los 3 checkboxes en una fila inferior ordenada */
+  .cliente-card {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-areas:
+      "info info edit"
+      "rut contact contact"
+      "toc1 toc2 toc3";
+  }
+  .cliente-card > div:nth-child(4) { grid-area: toc1; }
+  .cliente-card > div:nth-child(5) { grid-area: toc2; }
+  .cliente-card > div:nth-child(6) { grid-area: toc3; }
+  .cliente-card .toggle-oc {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 8px;
+    justify-content: center;
+    font-size: 10.5px;
+    white-space: nowrap;
+  }
+  body:not(.theme-dark) .cliente-card .toggle-oc {
+    background: rgba(0, 0, 0, 0.03);
   }
   .adj-form {
     flex-direction: column;
