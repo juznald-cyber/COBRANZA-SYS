@@ -410,6 +410,35 @@ body:not(.theme-dark) .btn-primary:hover {
 .kpi.k-pendiente { --accent: var(--orange); }
 .kpi.k-factorizado { --accent: var(--purple); }
 .kpi.k-vencido { --accent: var(--red); }
+.kpi[data-kpi-filter] {
+  cursor: pointer;
+  user-select: none;
+}
+.kpi[data-kpi-filter]:active {
+  transform: scale(0.98);
+}
+.kpi.kpi-active {
+  border-color: var(--accent, var(--amber));
+  box-shadow: 0 0 0 2px var(--accent, var(--amber)), var(--shadow-lg);
+  background: rgba(255, 255, 255, 0.08);
+}
+body:not(.theme-dark) .kpi.kpi-active {
+  background: rgba(0, 0, 0, 0.04);
+}
+.kpi.kpi-active::after {
+  content: '✓ Filtrando';
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 980px;
+  background: var(--accent, var(--amber));
+  color: #000000;
+}
 
 /* ---------- Apple Spotlight Filter Bar ---------- */
 .filterbar {
@@ -3970,7 +3999,17 @@ function filteredTech(){
       var rutMatch = cli.rut && t.rut && cli.rut.replace(/[.\-\s]/g,'').toUpperCase() === t.rut.replace(/[.\-\s]/g,'').toUpperCase();
       if(!nameMatch && !rutMatch) return false;
     }
-    if(filters.estado && techStatusKey(t)!==filters.estado) return false;
+    if(filters.estado){
+      var tk = techStatusKey(t);
+      var tl = techLine(t);
+      if(filters.estado === '__emitida__'){
+        if(!tl.emitida) return false;
+      } else if(filters.estado === '__por_cobrar__'){
+        if(tk !== 'facturado' && tk !== 'vencido') return false;
+      } else if(tk !== filters.estado){
+        return false;
+      }
+    }
     if(q){
       if(!buscarMatch(filters.buscar, [t.cliente,t.rut,t.cotizacion,t.factura,t.oc,t.hes], [t.neto,t.total])) return false;
     }
@@ -3989,14 +4028,21 @@ function renderTechKPIs(){
     else if(t.estado === 'factorizado' || (t.estado === 'facturado' && isSII)) pend += tot;
   });
   var kpis = [
-    {cls:'k-facturado', lbl:'Total tecnología', val:fmtMoney(fac), sub:list.length+' servicios'},
-    {cls:'k-pagado', lbl:'Pagado', val:fmtMoney(pag), sub:list.filter(function(t){return t.estado==='pagado';}).length+' servicios'},
-    {cls:'k-pendiente', lbl:'Por cobrar', val:fmtMoney(pend), sub:list.filter(function(t){return t.estado==='factorizado'||(t.estado==='facturado' && (t.enviadaSII!==false));}).length+' servicios'},
-    {cls:'k-factorizado', lbl:'Factorizado', val:fmtMoney(list.filter(function(t){return t.estado==='factorizado';}).reduce(function(a,t){return a+(Number(t.total)||0);},0)), sub:''}
+    {cls:'k-facturado', fKey:'__emitida__', lbl:'Total tecnología', val:fmtMoney(fac), sub:list.length+' servicios'},
+    {cls:'k-pagado', fKey:'pagado', lbl:'Pagado', val:fmtMoney(pag), sub:list.filter(function(t){return t.estado==='pagado';}).length+' servicios'},
+    {cls:'k-pendiente', fKey:'__por_cobrar__', lbl:'Por cobrar', val:fmtMoney(pend), sub:list.filter(function(t){return t.estado==='factorizado'||(t.estado==='facturado' && (t.enviadaSII!==false));}).length+' servicios'},
+    {cls:'k-factorizado', fKey:'factorizado', lbl:'Factorizado', val:fmtMoney(list.filter(function(t){return t.estado==='factorizado';}).reduce(function(a,t){return a+(Number(t.total)||0);},0)), sub:''}
   ];
-  document.getElementById('techKpiRow').innerHTML = kpis.map(function(k){
-    return '<div class="kpi '+k.cls+'"><div class="lbl">'+k.lbl+'</div><div class="val">'+k.val+'</div><div class="sub">'+k.sub+'</div></div>';
+  var techRowEl = document.getElementById('techKpiRow');
+  techRowEl.innerHTML = kpis.map(function(k){
+    var isAct = (filters.estado === k.fKey) || (k.fKey === '__por_cobrar__' && filters.estado === 'facturado');
+    return '<div class="kpi '+k.cls+(isAct?' kpi-active':'')+'" data-kpi-filter="'+k.fKey+'" title="Clic para filtrar por '+k.lbl+'"><div class="lbl">'+k.lbl+'</div><div class="val">'+k.val+'</div><div class="sub">'+k.sub+'</div></div>';
   }).join('');
+  Array.prototype.forEach.call(techRowEl.querySelectorAll('[data-kpi-filter]'), function(el){
+    el.addEventListener('click', function(){
+      applyKpiFilter(el.getAttribute('data-kpi-filter'));
+    });
+  });
 }
 
 function renderTech(){
@@ -4728,8 +4774,15 @@ function passesFilters(item){
   if(filters.periodo && item.rec.periodo !== filters.periodo) return false;
   if(filters.estado){
     var stRecord = item.status;
+    var lines = invoiceLines(item.rec);
     var stLines = getRecordInvoiceStatuses(item.rec, item.client).map(function(s){ return s.st; });
-    if(stRecord !== filters.estado && stLines.indexOf(filters.estado) === -1) return false;
+    if(filters.estado === '__emitida__'){
+      if(!lines.some(function(l){ return l.emitida; })) return false;
+    } else if(filters.estado === '__por_cobrar__'){
+      if(stRecord !== 'facturado' && stRecord !== 'vencido' && stLines.indexOf('facturado') === -1 && stLines.indexOf('vencido') === -1) return false;
+    } else {
+      if(stRecord !== filters.estado && stLines.indexOf(filters.estado) === -1) return false;
+    }
   }
   if(filters.buscar){
     var s = segFactura(item.rec);
@@ -4788,7 +4841,10 @@ function renderFilterOptions(){
   fillDatalist('dlPeriodo', filterOpts.periodo);
   setFilterInput('fPeriodo', 'periodo');
 
-  filterOpts.estado = Object.keys(STATUS_DEFS).map(function(k){ return { label: STATUS_DEFS[k].label, value: k }; });
+  filterOpts.estado = [
+    { label: 'Total facturado (emitidas)', value: '__emitida__' },
+    { label: 'Pendiente por cobrar (vigentes + vencidas)', value: '__por_cobrar__' }
+  ].concat(Object.keys(STATUS_DEFS).map(function(k){ return { label: STATUS_DEFS[k].label, value: k }; }));
   fillDatalist('dlEstado', filterOpts.estado);
   setFilterInput('fEstado', 'estado');
 }
@@ -4803,6 +4859,23 @@ function wireFilterInput(inputId, kind){
     if(v === null){ setFilterInput(inputId, kind); }
     else { filters[kind] = v; setFilterInput(inputId, kind); renderKPIs(); renderTable(); renderTech(); renderMatrix(); }
   });
+}
+
+function applyKpiFilter(fKey){
+  if(filters.estado === fKey){
+    filters.estado = '';
+  } else {
+    filters.estado = fKey;
+  }
+  setFilterInput('fEstado', 'estado');
+  if(currentTab !== 'registros' && currentTab !== 'resumen' && currentTab !== 'tecnologia'){
+    switchTab('registros');
+  }
+  renderKPIs();
+  renderTable();
+  renderTech();
+  renderMatrix();
+  renderDashboard();
 }
 
 /* ---------- Render: KPIs ---------- */
@@ -4820,11 +4893,9 @@ function renderKPIs(){
       if(b==='vencido') vencidos++;
     });
   });
-  // Incluir Tecnología (cuando no hay filtro por cliente/estado de cobranza)
-  if(!filters.cliente && !filters.estado){
-    state.tech.forEach(function(t){
-      if(filters.periodo && t.periodo!==filters.periodo) return;
-      if(filters.buscar){ if(!buscarMatch(filters.buscar, [t.cliente,t.rut,t.cotizacion,t.factura,t.oc,t.hes], [t.neto,t.total])) return; }
+  // Incluir Tecnología (cuando no hay filtro por cliente)
+  if(!filters.cliente){
+    filteredTech().forEach(function(t){
       var l=techLine(t); if(!l.emitida) return;
       var b=lineBucket(l);
       facturadoTot += l.total; facCount++;
@@ -4835,13 +4906,22 @@ function renderKPIs(){
     });
   }
   var kpis = [
-    {cls:'k-facturado', lbl:'Total facturado', val:fmtMoney(facturadoTot), sub:facCount + ' facturas'},
-    {cls:'k-pagado', lbl:'Pagado', val:fmtMoney(pagadoTot), sub:pagCount + ' facturas'},
-    {cls:'k-pendiente', lbl:'Pendiente por cobrar', val:fmtMoney(pendienteTot), sub:pendCount + ' facturas'},
-    {cls:'k-factorizado', lbl:'Factorizado', val:fmtMoney(factorizadoTot), sub:factzCount + ' facturas'},
-    {cls:'k-vencido', lbl:'Vencidos', val:vencidos, sub:'facturas fuera de plazo'}
+    {cls:'k-facturado', fKey:'__emitida__', lbl:'Total facturado', val:fmtMoney(facturadoTot), sub:facCount + ' facturas'},
+    {cls:'k-pagado', fKey:'pagado', lbl:'Pagado', val:fmtMoney(pagadoTot), sub:pagCount + ' facturas'},
+    {cls:'k-pendiente', fKey:'__por_cobrar__', lbl:'Pendiente por cobrar', val:fmtMoney(pendienteTot), sub:pendCount + ' facturas'},
+    {cls:'k-factorizado', fKey:'factorizado', lbl:'Factorizado', val:fmtMoney(factorizadoTot), sub:factzCount + ' facturas'},
+    {cls:'k-vencido', fKey:'vencido', lbl:'Vencidos', val:vencidos, sub:'facturas fuera de plazo'}
   ];
-  document.getElementById('kpiRow').innerHTML = kpis.map(function(k){ return '<div class="kpi '+k.cls+'"><div class="lbl">'+k.lbl+'</div><div class="val">'+k.val+'</div><div class="sub">'+k.sub+'</div></div>'; }).join('');
+  var kpiRowEl = document.getElementById('kpiRow');
+  kpiRowEl.innerHTML = kpis.map(function(k){
+    var isAct = (filters.estado === k.fKey) || (k.fKey === '__por_cobrar__' && filters.estado === 'facturado');
+    return '<div class="kpi '+k.cls+(isAct?' kpi-active':'')+'" data-kpi-filter="'+k.fKey+'" title="Clic para filtrar por '+k.lbl+' (clic de nuevo para quitar filtro)"><div class="lbl">'+k.lbl+'</div><div class="val">'+k.val+'</div><div class="sub">'+k.sub+'</div></div>';
+  }).join('');
+  Array.prototype.forEach.call(kpiRowEl.querySelectorAll('[data-kpi-filter]'), function(el){
+    el.addEventListener('click', function(){
+      applyKpiFilter(el.getAttribute('data-kpi-filter'));
+    });
+  });
 }
 
 /* ---------- Render: tabla de registros ---------- */
@@ -5598,13 +5678,16 @@ function renderDashboard(){
   var vencMonto = vencTot + techVenc.reduce(function(a,t){ return a+(Number(t.total)||0); },0);
 
   var cards = [
-    {cls:'k-facturado', lbl:'Total facturado', val:fmtMoney(facturadoTot), sub:factCount+' facturas'},
-    {cls:'k-pagado', lbl:'Cobrado', val:fmtMoney(cobradoTot), sub:cobradoCount+' facturas'},
-    {cls:'k-factorizado', lbl:'Factorizado', val:fmtMoney(factzTot), sub:factzCount+' facturas'},
-    {cls:'k-pendiente', lbl:'Disponible p/ factorizar', val:fmtMoney(availTot), sub:avail.length+' facturas'},
-    {cls:'k-vencido', lbl:'Vencidas por cobrar', val:vencCount, sub:fmtMoney(vencMonto)}
+    {cls:'k-facturado', fKey:'__emitida__', lbl:'Total facturado', val:fmtMoney(facturadoTot), sub:factCount+' facturas'},
+    {cls:'k-pagado', fKey:'pagado', lbl:'Cobrado', val:fmtMoney(cobradoTot), sub:cobradoCount+' facturas'},
+    {cls:'k-factorizado', fKey:'factorizado', lbl:'Factorizado', val:fmtMoney(factzTot), sub:factzCount+' facturas'},
+    {cls:'k-pendiente', fKey:'__por_cobrar__', lbl:'Disponible p/ factorizar', val:fmtMoney(availTot), sub:avail.length+' facturas'},
+    {cls:'k-vencido', fKey:'vencido', lbl:'Vencidas por cobrar', val:vencCount, sub:fmtMoney(vencMonto)}
   ];
-  var cardsHtml = '<div class="kpis">' + cards.map(function(k){ return '<div class="kpi '+k.cls+'"><div class="lbl">'+k.lbl+'</div><div class="val">'+k.val+'</div><div class="sub">'+k.sub+'</div></div>'; }).join('') + '</div>';
+  var cardsHtml = '<div class="kpis">' + cards.map(function(k){
+    var isAct = (filters.estado === k.fKey) || (k.fKey === '__por_cobrar__' && filters.estado === 'facturado');
+    return '<div class="kpi '+k.cls+(isAct?' kpi-active':'')+'" data-kpi-filter="'+k.fKey+'" title="Clic para filtrar por '+k.lbl+'"><div class="lbl">'+k.lbl+'</div><div class="val">'+k.val+'</div><div class="sub">'+k.sub+'</div></div>';
+  }).join('') + '</div>';
 
   // Facturado por mes
   var fm = facturadoByMonthMap();
@@ -5645,13 +5728,18 @@ function renderDashboard(){
     '</div>';
 
   // Interactividad
+  Array.prototype.forEach.call(box.querySelectorAll('[data-kpi-filter]'), function(el){
+    el.addEventListener('click', function(){
+      applyKpiFilter(el.getAttribute('data-kpi-filter'));
+    });
+  });
   Array.prototype.forEach.call(box.querySelectorAll('.bar-row'), function(row){
     row.addEventListener('click', function(){
       var act=row.getAttribute('data-act'), k=row.getAttribute('data-k');
-      if(act==='periodo'){ filters.periodo=k; document.getElementById('fPeriodo').value=k; }
-      else if(act==='estado'){ filters.estado=k; document.getElementById('fEstado').value=k; }
+      if(act==='periodo'){ filters.periodo=k; setFilterInput('fPeriodo', 'periodo'); }
+      else if(act==='estado'){ filters.estado=k; setFilterInput('fEstado', 'estado'); }
       else if(act==='entidad'){ filters.buscar=k; document.getElementById('fBuscar').value=k; }
-      switchTab('registros'); renderKPIs(); renderTable();
+      switchTab('registros'); renderKPIs(); renderTable(); renderTech(); renderMatrix(); renderDashboard();
     });
   });
   Array.prototype.forEach.call(box.querySelectorAll('.dash-table tbody tr, .dash-table tr[data-client]'), function(tr){
@@ -6285,7 +6373,7 @@ function initEvents(){
   wireFilterInput('fPeriodo', 'periodo');
   wireFilterInput('fEstado', 'estado');
   document.getElementById('fBuscar').addEventListener('input', debounce(function(e){ filters.buscar = e.target.value; renderKPIs(); renderTable(); renderTech(); renderMatrix(); }, 200));
-  document.getElementById('btnClearFilters').addEventListener('click', function(){ filters = {cliente:'', periodo:'', estado:'', buscar:''}; document.getElementById('fBuscar').value = ''; renderFilterOptions(); renderKPIs(); renderTable(); renderTech(); renderMatrix(); });
+  document.getElementById('btnClearFilters').addEventListener('click', function(){ filters = {cliente:'', periodo:'', estado:'', buscar:''}; document.getElementById('fBuscar').value = ''; renderFilterOptions(); renderKPIs(); renderTable(); renderTech(); renderMatrix(); renderDashboard(); });
   document.getElementById('btnNuevoRegistro').addEventListener('click', openNuevoRegistroModal);
   document.getElementById('btnAddPeriodo').addEventListener('click', openPeriodoModal);
   document.getElementById('btnNuevoCliente').addEventListener('click', function(){ openClientModal(null); });
