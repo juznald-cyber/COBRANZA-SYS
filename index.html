@@ -3822,9 +3822,10 @@ function checkpointState(rec, client){
 }
 
 /* ---------- Persistencia ---------- */
-function serializeState(){
+function serializeState(pretty){
   sanitizeRecords();
-  return JSON.stringify({ version:3, savedAt:new Date().toISOString(), clients:state.clients, records:state.records, periods:state.periods, tech:state.tech, entidades:state.entidades, adjuntos:state.adjuntos }, null, 1);
+  var obj = { version:3, savedAt:new Date().toISOString(), clients:state.clients, records:state.records, periods:state.periods, tech:state.tech, entidades:state.entidades, adjuntos:state.adjuntos };
+  return pretty ? JSON.stringify(obj, null, 1) : JSON.stringify(obj);
 }
 function loadFromObject(obj){
   if(!obj || !obj.clients || !obj.records){ toast('El archivo no tiene el formato esperado.', 'err'); return false; }
@@ -3844,7 +3845,10 @@ function loadFromObject(obj){
 function saveLocal(){
   sanitizeRecords();
   try{ localStorage.setItem(LS_KEY, serializeState()); }catch(e){}
-  if(cloud.user && !cloud.applying){ saveCloudDebounced(); }
+  if(cloud.user && !cloud.applying){
+    cloud.dirty = true;
+    saveCloudDebounced();
+  }
 }
 function loadLocal(){
   try{
@@ -3853,6 +3857,7 @@ function loadLocal(){
       if(o && o.clients && o.records){
         state.clients=o.clients; state.records=o.records; state.periods=o.periods||[]; state.tech=o.tech||[];
         state.entidades=normalizeEntidades(o.entidades);
+        state.adjuntos=o.adjuntos||[];
         sanitizeRecords();
         sortPeriods(); return true;
       }
@@ -3916,7 +3921,7 @@ function setConnPill(on, name){
   txt.textContent = on ? ('Guardando en: ' + name) : 'Sin archivo conectado';
 }
 function exportBackup(){
-  var blob = new Blob([serializeState()], {type:'application/json'});
+  var blob = new Blob([serializeState(true)], {type:'application/json'});
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
   var stamp = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
@@ -5136,7 +5141,14 @@ function openRecordModal(clientId, periodo){
   editingRecordKey = recordKey(clientId, periodo); ensureRecord(clientId, periodo); renderRecordModal();
   document.getElementById('overlayRegistro').classList.add('show');
 }
-function closeRecordModal(){ document.getElementById('overlayRegistro').classList.remove('show'); editingRecordKey=null; renderAll(); }
+function closeRecordModal(){
+  document.getElementById('overlayRegistro').classList.remove('show');
+  editingRecordKey = null;
+  saveLocal();
+  saveToFileDebounced();
+  saveCloudNow();
+  renderAll();
+}
 function buildCheckpointHtml(cp){
   return '<div class="checkpoint">' + cp.steps.map(function(s){
     var cls = 'cp-station' + (s.done?' done':'') + (s.current?' current':'') + (s.final?' final':'');
@@ -5356,6 +5368,27 @@ function wireRecordModalEvents(){
         if(rec.factoring.factorizado){ rec.factoring.monto = recFactura1TotalRebajada(rec); touched.push('factoring.monto'); }
         if(rec.pago.pagado){ rec.pago.monto = recFactura1TotalRebajada(rec); touched.push('pago.monto'); }
       }
+      if((field === 'factura.numero' || field === 'factura.neto' || field === 'factura.fechaFacturada') && !rec.factura.emitida){
+        if((rec.factura.numero && String(rec.factura.numero).trim()) || (Number(rec.factura.neto)||0) > 0){
+          rec.factura.emitida = true;
+          touched.push('factura.emitida');
+          if(!rec.factura.fechaFacturada){
+            rec.factura.fechaFacturada = todayISO();
+            rec.factura.fechaVencimiento = addDaysISO(rec.factura.fechaFacturada, 30);
+            touched.push('factura.fechaFacturada','factura.fechaVencimiento');
+          }
+        }
+      }
+      if(field === 'oc.numero' && rec.oc.numero && String(rec.oc.numero).trim() && !rec.oc.recibida){
+        rec.oc.recibida = true;
+        touched.push('oc.recibida');
+        if(!rec.oc.fecha){ rec.oc.fecha = todayISO(); touched.push('oc.fecha'); }
+      }
+      if(field === 'hes.numero' && rec.hes.numero && String(rec.hes.numero).trim() && !rec.hes.recibido){
+        rec.hes.recibido = true;
+        touched.push('hes.recibido');
+        if(!rec.hes.fecha){ rec.hes.fecha = todayISO(); touched.push('hes.fecha'); }
+      }
       if(field === 'factura.fechaFacturada' && rec.factura.fechaFacturada){ rec.factura.fechaVencimiento = addDaysISO(rec.factura.fechaFacturada,30); touched.push('factura.fechaVencimiento'); }
       if(field === 'prefactura.enviada' && val && !rec.prefactura.fecha){ rec.prefactura.fecha = todayISO(); touched.push('prefactura.fecha'); }
       if(field === 'oc.recibida' && val && !rec.oc.fecha){ rec.oc.fecha = todayISO(); touched.push('oc.fecha'); }
@@ -5367,7 +5400,7 @@ function wireRecordModalEvents(){
       if(field === 'pago.pagado' && val && !rec.pago.fecha){ rec.pago.fecha = todayISO(); touched.push('pago.fecha'); }
       if(field === 'pago.pagado' && val){ rec.pago.monto = recFactura1TotalRebajada(rec); touched.push('pago.monto'); }
       if(field === 'factura2.neto'){ rec.factura2.iva = Math.round(rec.factura2.neto*0.19); rec.factura2.total = rec.factura2.neto + rec.factura2.iva; }
-      if(field.indexOf('factura2.')===0 && field!=='factura2.activa'){ if((rec.factura2.numero && String(rec.factura2.numero).trim()) || (Number(rec.factura2.neto)||0)>0){ rec.factura2.activa = true; } }
+      if(field.indexOf('factura2.')===0 && field!=='factura2.activa'){ if((rec.factura2.numero && String(rec.factura2.numero).trim()) || (Number(rec.factura2.neto)||0)>0){ rec.factura2.activa = true; touched.push('factura2.activa'); } }
       if(field === 'factura2.fechaFacturada' && rec.factura2.fechaFacturada){ rec.factura2.fechaVencimiento = addDaysISO(rec.factura2.fechaFacturada,30); touched.push('factura2.fechaVencimiento'); }
       if(field === 'factura2.factorizado' && val && !rec.factura2.factoringFecha){ rec.factura2.factoringFecha = todayISO(); touched.push('factura2.factoringFecha'); }
       if(field === 'factura2.pagado' && val && !rec.factura2.pagoFecha){ rec.factura2.pagoFecha = todayISO(); touched.push('factura2.pagoFecha'); }
@@ -5390,6 +5423,7 @@ function wireRecordModalEvents(){
       if(field.indexOf('nc.')===0 && field!=='nc.activa'){
         if((rec.nc.numero && String(rec.nc.numero).trim()) || (Number(rec.nc.neto)||0)>0 || (Number(rec.nc.total)||0)>0){
           rec.nc.activa = true;
+          touched.push('nc.activa');
         }
       }
       if(field === 'nc.activa' || field === 'nc.facturaAfecta'){
@@ -6401,11 +6435,11 @@ function initEvents(){
   document.getElementById('adjCatFilter').addEventListener('change', renderRespaldos);
   document.getElementById('adjSearch').addEventListener('input', debounce(renderRespaldos, 180));
   document.getElementById('btnTheme').addEventListener('click', toggleTheme);
-  Array.prototype.forEach.call(document.querySelectorAll('.overlay'), function(ov){ ov.addEventListener('click', function(e){ if(e.target === ov){ ov.classList.remove('show'); if(ov.id === 'overlayRegistro'){ editingRecordKey = null; renderAll(); } } }); });
-  document.addEventListener('keydown', function(e){ if(e.key === 'Escape'){ Array.prototype.forEach.call(document.querySelectorAll('.overlay.show'), function(ov){ ov.classList.remove('show'); }); if(editingRecordKey){ editingRecordKey = null; renderAll(); } } });
+  Array.prototype.forEach.call(document.querySelectorAll('.overlay'), function(ov){ ov.addEventListener('click', function(e){ if(e.target === ov){ if(ov.id === 'overlayRegistro'){ closeRecordModal(); } else { ov.classList.remove('show'); } } }); });
+  document.addEventListener('keydown', function(e){ if(e.key === 'Escape'){ Array.prototype.forEach.call(document.querySelectorAll('.overlay.show'), function(ov){ ov.classList.remove('show'); }); if(editingRecordKey){ closeRecordModal(); } } });
 }
 /* ---------- Nube (Firebase) + Autenticación ---------- */
-var cloud = { app:null, auth:null, db:null, doc:null, user:null, unsub:null, applying:false };
+var cloud = { app:null, auth:null, db:null, doc:null, user:null, unsub:null, applying:false, dirty:false, saving:false, lastSavedAt:'' };
 var myClientId = 'c' + Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 function initFirebase(){
@@ -6443,12 +6477,31 @@ function onAuthChanged(user){
   }
 }
 
+async function loadExtraChunks(chunkCount){
+  var extraRecords = {};
+  if(!chunkCount || chunkCount <= 0 || !cloud.db) return extraRecords;
+  for(var i = 1; i <= chunkCount; i++){
+    try{
+      var cSnap = await cloud.db.collection('cobranza').doc('principal_chunk_' + i).get();
+      if(cSnap.exists && cSnap.data() && cSnap.data().recordsPayload){
+        var parsed = JSON.parse(cSnap.data().recordsPayload);
+        Object.assign(extraRecords, parsed);
+      }
+    }catch(err){ console.warn('Chunk load warning:', err); }
+  }
+  return extraRecords;
+}
+
 async function startCloud(){
   setConnPill(true, 'Nube · ' + cloud.user.email);
   try{
     var snap = await cloud.doc.get();
-    if(snap.exists && applyCloudPayload(snap.data())){
-      toast('Datos cargados desde la nube.', 'ok');
+    if(snap.exists){
+      var d = snap.data();
+      var extraRecs = (d && d.chunkCount > 0) ? await loadExtraChunks(d.chunkCount) : {};
+      if(applyCloudPayload(d, extraRecs)){
+        toast('Datos cargados desde la nube.', 'ok');
+      }
     } else {
       /* Primera vez: subimos lo que haya localmente (o los datos de ejemplo) como semilla */
       await saveCloudNow();
@@ -6456,25 +6509,34 @@ async function startCloud(){
     }
   }catch(e){
     console.error(e);
-    toast('No se pudo leer la nube. Verifica las reglas de Firestore (permiso).', 'err');
+    toast('No se pudo leer la nube. Verifica tu conexión o las reglas de Firestore.', 'err');
   }
   if(cloud.unsub){ cloud.unsub(); }
-  cloud.unsub = cloud.doc.onSnapshot(function(snap){
+  cloud.unsub = cloud.doc.onSnapshot(async function(snap){
     if(!snap.exists) return;
+    /* Evitar que el snapshot revierta los cambios locales si estamos guardando, si hay cambios pendientes o si hay un modal abierto */
+    if(cloud.saving || cloud.dirty || editingRecordKey || editingClientId || editingTechId) return;
+    if(snap.metadata && snap.metadata.hasPendingWrites) return;
     var data = snap.data();
     if(!data || data.clientId === myClientId) return; /* ignoramos nuestros propios cambios */
-    if(applyCloudPayload(data)){ toast('Datos actualizados desde otro dispositivo.', 'ok'); }
+    if(cloud.lastSavedAt && data.savedAt && data.savedAt <= cloud.lastSavedAt) return;
+    var extraRecs = (data.chunkCount > 0) ? await loadExtraChunks(data.chunkCount) : {};
+    if(applyCloudPayload(data, extraRecs)){ toast('Datos actualizados desde otro dispositivo.', 'ok'); }
   }, function(err){ console.error(err); });
 }
 
 function stopCloud(){ if(cloud.unsub){ cloud.unsub(); cloud.unsub = null; } }
 
-function applyCloudPayload(data){
+function applyCloudPayload(data, extraRecords){
   if(!data || !data.payload) return false;
   try{
     var obj = JSON.parse(data.payload);
     if(!obj || !obj.clients || !obj.records) return false;
+    if(extraRecords && Object.keys(extraRecords).length > 0){
+      Object.assign(obj.records, extraRecords);
+    }
     cloud.applying = true;
+    if(data.savedAt) cloud.lastSavedAt = data.savedAt;
     state.clients   = obj.clients;
     state.records   = obj.records;
     state.periods   = obj.periods || [];
@@ -6493,14 +6555,78 @@ function applyCloudPayload(data){
 var saveCloudDebounced = debounce(function(){ saveCloudNow(); }, 900);
 async function saveCloudNow(){
   if(!cloud.user || !cloud.doc) return;
+  cloud.saving = true;
+  var nowIso = new Date().toISOString();
   try{
-    await cloud.doc.set({
-      payload: serializeState(),
-      savedAt: new Date().toISOString(),
-      clientId: myClientId,
-      email: cloud.user.email
-    });
-  }catch(e){ console.error(e); toast('No se pudo guardar en la nube.', 'err'); }
+    var compactPayload = serializeState(false);
+    /* Si el payload supera ~850 KB (límite de Firestore es 1 MB por documento), dividimos records en bloques */
+    if(compactPayload.length > 850000){
+      var allKeys = Object.keys(state.records);
+      var mainRecs = {};
+      var chunks = [];
+      var currentChunk = {};
+      var currentSize = 0;
+      for(var i = 0; i < allKeys.length; i++){
+        var k = allKeys[i];
+        var r = state.records[k];
+        var rStr = JSON.stringify(r);
+        if(i < 250 && JSON.stringify(mainRecs).length < 400000){
+          mainRecs[k] = r;
+        } else {
+          if(currentSize + rStr.length > 650000){
+            chunks.push(currentChunk);
+            currentChunk = {};
+            currentSize = 0;
+          }
+          currentChunk[k] = r;
+          currentSize += rStr.length + k.length + 6;
+        }
+      }
+      if(Object.keys(currentChunk).length > 0) chunks.push(currentChunk);
+
+      for(var cIdx = 0; cIdx < chunks.length; cIdx++){
+        await cloud.db.collection('cobranza').doc('principal_chunk_' + (cIdx + 1)).set({
+          recordsPayload: JSON.stringify(chunks[cIdx]),
+          savedAt: nowIso,
+          clientId: myClientId
+        });
+      }
+      var baseObj = {
+        version: 3,
+        savedAt: nowIso,
+        clients: state.clients,
+        records: mainRecs,
+        periods: state.periods,
+        tech: state.tech,
+        entidades: state.entidades,
+        adjuntos: state.adjuntos
+      };
+      await cloud.doc.set({
+        payload: JSON.stringify(baseObj),
+        chunkCount: chunks.length,
+        savedAt: nowIso,
+        clientId: myClientId,
+        email: cloud.user.email
+      });
+    } else {
+      await cloud.doc.set({
+        payload: compactPayload,
+        chunkCount: 0,
+        savedAt: nowIso,
+        clientId: myClientId,
+        email: cloud.user.email
+      });
+    }
+    cloud.lastSavedAt = nowIso;
+    cloud.dirty = false;
+    setConnPill(true, 'Nube · ' + cloud.user.email);
+  }catch(e){
+    console.error('Error guardando en Firestore:', e);
+    var reason = (e && (e.code || e.message)) ? (' (' + (e.code || e.message) + ')') : '';
+    toast('No se pudo guardar en la nube' + reason + '. Tus cambios siguen guardados en este equipo.', 'err');
+  }finally{
+    cloud.saving = false;
+  }
 }
 
 function showLogin(msg){
