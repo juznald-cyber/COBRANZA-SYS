@@ -651,6 +651,111 @@ body:not(.theme-dark) thead th {
   border-bottom: 2px solid rgba(0, 0, 0, 0.15);
 }
 .table-wrap thead th { position: sticky; top: 0; z-index: 10; }
+thead th.th-sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background .15s ease, color .15s ease;
+}
+thead th.th-sortable:hover {
+  background: #222228;
+  color: #ffffff;
+}
+body:not(.theme-dark) thead th.th-sortable:hover {
+  background: #dfe2e8;
+  color: #000000;
+}
+thead th.th-sorted {
+  color: var(--amber);
+  background: rgba(255, 159, 10, 0.12);
+}
+body:not(.theme-dark) thead th.th-sorted {
+  color: var(--amber-deep);
+  background: rgba(217, 119, 6, 0.12);
+}
+.th-sort-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.sort-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  opacity: 0.45;
+  transition: opacity .15s ease, transform .15s ease;
+}
+thead th.th-sortable:hover .sort-arrow {
+  opacity: 0.85;
+}
+thead th.th-sorted .sort-arrow {
+  opacity: 1;
+  color: var(--amber);
+  font-weight: 800;
+}
+body:not(.theme-dark) thead th.th-sorted .sort-arrow {
+  color: var(--amber-deep);
+}
+thead tr.col-filter-row th {
+  padding: 6px 8px 8px;
+  background: #141418;
+  border-bottom: 2px solid var(--line-strong);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+body:not(.theme-dark) thead tr.col-filter-row th {
+  background: #f2f3f7;
+}
+.col-filter-input {
+  width: 100%;
+  min-width: 70px;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  background: #1e1e24;
+  color: #ffffff;
+  outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+body:not(.theme-dark) .col-filter-input {
+  background: #ffffff;
+  color: #1d1d1f;
+  border-color: rgba(0, 0, 0, 0.16);
+}
+.col-filter-input::placeholder {
+  color: var(--slate-soft);
+  font-size: 11px;
+}
+.col-filter-input:focus {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 2px var(--amber-pale);
+}
+.col-filter-input.has-val {
+  border-color: var(--amber);
+  background: rgba(255, 159, 10, 0.1);
+}
+.sort-dir-btn {
+  padding: 8px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: #1c1c1e;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .15s ease;
+}
+body:not(.theme-dark) .sort-dir-btn {
+  background: #ffffff;
+  color: #1d1d1f;
+}
+.sort-dir-btn:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+}
 tbody td {
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
@@ -1754,7 +1859,8 @@ body:not(.theme-dark) .periodo-item {
   }
   .filterbar .fgroup:nth-child(3),
   .filterbar .fgroup:nth-child(4),
-  .filterbar .fgroup:nth-child(5) {
+  .filterbar .fgroup:nth-child(5),
+  .filterbar .fgroup:nth-child(6) {
     grid-column: 1 / -1;
   }
   .filterbar select,
@@ -2244,6 +2350,22 @@ body:not(.theme-dark) .periodo-item {
       <input type="text" id="fEstado" list="dlEstado" placeholder="Todos — escribe para buscar" autocomplete="off">
       <datalist id="dlEstado"></datalist>
     </div>
+    <div class="fgroup">
+      <label>Organizar por</label>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <select id="fOrden" style="min-width:150px;">
+          <option value="periodo">Periodo</option>
+          <option value="cliente">Cliente / Servicio</option>
+          <option value="factura">N° Factura</option>
+          <option value="emision">Emisión</option>
+          <option value="vencimiento">Vencimiento</option>
+          <option value="total">Total facturado</option>
+          <option value="estado">Estado</option>
+          <option value="factoring">Factoring</option>
+        </select>
+        <button type="button" class="sort-dir-btn" id="btnSortDir" title="Cambiar orden Ascendente / Descendente">↓ Desc</button>
+      </div>
+    </div>
     <div class="fgroup" style="flex:1;">
       <label>Buscar</label>
       <input type="search" class="search" id="fBuscar" placeholder="Cliente, N° factura, RUT, entidad, OC, HES o monto…">
@@ -2280,16 +2402,30 @@ body:not(.theme-dark) .periodo-item {
     <div class="table-wrap">
       <table id="tblRegistros">
         <thead>
-          <tr>
-            <th>Cliente / Servicio</th>
-            <th>Periodo</th>
-            <th>N° Factura</th>
-            <th>Emisión</th>
-            <th>Vencimiento</th>
-            <th>Total facturado</th>
-            <th>Estado</th>
-            <th>Factoring</th>
+          <tr id="tblSortHeaderRow">
+            <th class="th-sortable" data-sort="cliente" title="Clic para organizar por Cliente / Servicio"><span class="th-sort-wrap">Cliente / Servicio <span class="sort-arrow">↕</span></span></th>
+            <th class="th-sortable th-sorted" data-sort="periodo" title="Clic para organizar por Periodo"><span class="th-sort-wrap">Periodo <span class="sort-arrow">↓</span></span></th>
+            <th class="th-sortable" data-sort="factura" title="Clic para organizar por N° Factura"><span class="th-sort-wrap">N° Factura <span class="sort-arrow">↕</span></span></th>
+            <th class="th-sortable" data-sort="emision" title="Clic para organizar por Fecha de Emisión"><span class="th-sort-wrap">Emisión <span class="sort-arrow">↕</span></span></th>
+            <th class="th-sortable" data-sort="vencimiento" title="Clic para organizar por Fecha de Vencimiento"><span class="th-sort-wrap">Vencimiento <span class="sort-arrow">↕</span></span></th>
+            <th class="th-sortable" data-sort="total" title="Clic para organizar por Total facturado"><span class="th-sort-wrap">Total facturado <span class="sort-arrow">↕</span></span></th>
+            <th class="th-sortable" data-sort="estado" title="Clic para organizar por Estado"><span class="th-sort-wrap">Estado <span class="sort-arrow">↕</span></span></th>
+            <th class="th-sortable" data-sort="factoring" title="Clic para organizar por Factoring"><span class="th-sort-wrap">Factoring <span class="sort-arrow">↕</span></span></th>
             <th></th>
+          </tr>
+          <tr class="col-filter-row">
+            <th><input type="text" class="col-filter-input" data-col-filter="cliente" placeholder="Filtrar cliente / serv…" autocomplete="off"></th>
+            <th><input type="text" class="col-filter-input" data-col-filter="periodo" list="dlPeriodo" placeholder="Periodo…" autocomplete="off"></th>
+            <th><input type="text" class="col-filter-input" data-col-filter="factura" placeholder="N° factura…" autocomplete="off"></th>
+            <th><input type="text" class="col-filter-input" data-col-filter="emision" placeholder="Ej: nov 2026…" autocomplete="off"></th>
+            <th><input type="text" class="col-filter-input" data-col-filter="vencimiento" placeholder="Ej: dic 2026…" autocomplete="off"></th>
+            <th><input type="text" class="col-filter-input" data-col-filter="total" placeholder="Monto $…" autocomplete="off"></th>
+            <th><input type="text" class="col-filter-input" data-col-filter="estado" list="dlEstado" placeholder="Estado…" autocomplete="off"></th>
+            <th>
+              <input type="text" class="col-filter-input" data-col-filter="factoring" list="dlFactoringCol" placeholder="Entidad / Sí / No…" autocomplete="off">
+              <datalist id="dlFactoringCol"></datalist>
+            </th>
+            <th style="text-align:center;"><button type="button" class="btn btn-ghost btn-sm" id="btnClearColFilters" title="Limpiar filtros de columnas" style="padding:3px 8px;font-size:11px;">✕</button></th>
           </tr>
         </thead>
         <tbody id="tblBody"></tbody>
@@ -4774,6 +4910,35 @@ function buscarMatch(q, textParts, amounts){
   }
   return false;
 }
+var sortState = { col: 'periodo', dir: 'desc' };
+var colFilters = { cliente:'', periodo:'', factura:'', emision:'', vencimiento:'', total:'', estado:'', factoring:'' };
+
+function getRecFactoringText(rec){
+  var parts = [];
+  if(rec.factoring && rec.factoring.factorizado){
+    parts.push(rec.factoring.entidad ? String(rec.factoring.entidad).trim() : 'Sí');
+  }
+  var seg = segFactura(rec);
+  if(seg && seg.factorizado){
+    parts.push(seg.entidad ? String(seg.entidad).trim() : 'Sí');
+  }
+  return parts.join(' ');
+}
+
+function getRecPrimaryInvoiceNum(rec){
+  if(rec.factura && rec.factura.numero && String(rec.factura.numero).trim()){
+    return String(rec.factura.numero).trim();
+  }
+  var seg = segFactura(rec);
+  if(seg && seg.numero && String(seg.numero).trim()){
+    return String(seg.numero).trim();
+  }
+  if(rec.cubierta && rec.cubierta.activa && rec.cubierta.factura){
+    return String(rec.cubierta.factura).trim();
+  }
+  return '';
+}
+
 function passesFilters(item){
   if(filters.cliente && item.client.id !== filters.cliente) return false;
   if(filters.periodo && item.rec.periodo !== filters.periodo) return false;
@@ -4799,13 +4964,197 @@ function passesFilters(item){
     var amt = [item.rec.factura.neto, item.rec.factura.total, s?s.neto:0, s?s.total:0, nc.neto||0, nc.total||0];
     if(!buscarMatch(filters.buscar, txt, amt)) return false;
   }
+  /* Filtros por columna en la barra de la tabla de Registros */
+  if(colFilters.cliente){
+    var qCli = colFilters.cliente.toLowerCase().trim();
+    var cliStr = (item.client.cliente + ' ' + item.client.servicio + ' ' + item.client.rut).toLowerCase();
+    if(cliStr.indexOf(qCli) === -1) return false;
+  }
+  if(colFilters.periodo){
+    var qPer = colFilters.periodo.toLowerCase().trim();
+    var perStr = ((item.rec.periodo || '') + ' ' + fmtPeriodo(item.rec.periodo)).toLowerCase();
+    if(perStr.indexOf(qPer) === -1) return false;
+  }
+  if(colFilters.factura){
+    var qFac = colFilters.factura.toLowerCase().trim();
+    var segF = segFactura(item.rec);
+    var ncF = item.rec.nc || {};
+    var facStr = [
+      item.rec.factura.numero || '',
+      segF ? (segF.numero || '') : '',
+      (item.rec.cubierta && item.rec.cubierta.activa) ? (item.rec.cubierta.factura || '') : '',
+      ncF.numero || ''
+    ].join(' ').toLowerCase();
+    if(facStr.indexOf(qFac) === -1) return false;
+  }
+  if(colFilters.emision){
+    var qEmi = colFilters.emision.toLowerCase().trim();
+    var fEmi = item.rec.factura.fechaFacturada || (segFactura(item.rec) && segFactura(item.rec).fechaFacturada) || '';
+    var emiStr = (fEmi + ' ' + (fEmi ? fmtDate(fEmi) : '—')).toLowerCase();
+    if(emiStr.indexOf(qEmi) === -1) return false;
+  }
+  if(colFilters.vencimiento){
+    var qVen = colFilters.vencimiento.toLowerCase().trim();
+    var fVen = item.rec.factura.fechaVencimiento || (segFactura(item.rec) && segFactura(item.rec).fechaVencimiento) || '';
+    var venStr = (fVen + ' ' + (fVen ? fmtDate(fVen) : '—')).toLowerCase();
+    if(venStr.indexOf(qVen) === -1) return false;
+  }
+  if(colFilters.total){
+    var qTot = colFilters.total.toLowerCase().trim();
+    var qTotDigits = qTot.replace(/[^\d]/g, '');
+    var totVal = recTotalFacturado(item.rec) || 0;
+    var totStr = (totVal ? fmtMoney(totVal) : '—') + ' ' + String(totVal);
+    if(qTotDigits){
+      if(String(totVal).indexOf(qTotDigits) === -1 && totStr.toLowerCase().indexOf(qTot) === -1) return false;
+    } else if(totStr.toLowerCase().indexOf(qTot) === -1){
+      return false;
+    }
+  }
+  if(colFilters.estado){
+    var qEst = colFilters.estado.toLowerCase().trim();
+    var resolvedEst = resolveFilter('estado', colFilters.estado);
+    var stLinesCol = getRecordInvoiceStatuses(item.rec, item.client).map(function(s){ return s.st; });
+    if(resolvedEst === '__emitida__'){
+      if(!invoiceLines(item.rec).some(function(l){ return l.emitida; })) return false;
+    } else if(resolvedEst === '__por_cobrar__'){
+      if(item.status !== 'facturado' && item.status !== 'vencido' && stLinesCol.indexOf('facturado') === -1 && stLinesCol.indexOf('vencido') === -1) return false;
+    } else if(resolvedEst && STATUS_DEFS[resolvedEst]){
+      if(item.status !== resolvedEst && stLinesCol.indexOf(resolvedEst) === -1) return false;
+    } else {
+      var stLabel = (STATUS_DEFS[item.status] ? STATUS_DEFS[item.status].label : '').toLowerCase();
+      var allLabels = stLinesCol.map(function(k){ return STATUS_DEFS[k] ? STATUS_DEFS[k].label.toLowerCase() : ''; }).join(' ');
+      if(stLabel.indexOf(qEst) === -1 && allLabels.indexOf(qEst) === -1) return false;
+    }
+  }
+  if(colFilters.factoring){
+    var qFct = colFilters.factoring.toLowerCase().trim();
+    var fctText = getRecFactoringText(item.rec);
+    var isFact = !!fctText;
+    if(qFct === 'con factoring' || qFct === 'si' || qFct === 'sí' || qFct === 'factorizado'){
+      if(!isFact) return false;
+    } else if(qFct === 'sin factoring' || qFct === 'no' || qFct === '—' || qFct === '-'){
+      if(isFact) return false;
+    } else {
+      if(fctText.toLowerCase().indexOf(qFct) === -1) return false;
+    }
+  }
   return true;
 }
+
+function compareRecords(a, b){
+  var col = sortState.col || 'periodo';
+  var dir = (sortState.dir === 'asc') ? 1 : -1;
+
+  if(col === 'cliente'){
+    var ca = (a.client.cliente + ' — ' + a.client.servicio).toLowerCase();
+    var cb = (b.client.cliente + ' — ' + b.client.servicio).toLowerCase();
+    if(ca !== cb) return ca.localeCompare(cb, 'es') * dir;
+    return (b.rec.periodo || '').localeCompare(a.rec.periodo || '');
+  }
+  if(col === 'periodo'){
+    var pa = a.rec.periodo || '';
+    var pb = b.rec.periodo || '';
+    if(pa !== pb) return pa.localeCompare(pb) * dir;
+    return a.client.cliente.localeCompare(b.client.cliente, 'es');
+  }
+  if(col === 'factura'){
+    var fa = getRecPrimaryInvoiceNum(a.rec);
+    var fb = getRecPrimaryInvoiceNum(b.rec);
+    if(!fa && !fb) return a.client.cliente.localeCompare(b.client.cliente, 'es');
+    if(!fa) return 1;
+    if(!fb) return -1;
+    var na = parseInt(fa.replace(/[^\d]/g, ''), 10);
+    var nb = parseInt(fb.replace(/[^\d]/g, ''), 10);
+    if(!isNaN(na) && !isNaN(nb) && na !== nb) return (na - nb) * dir;
+    return fa.localeCompare(fb, 'es') * dir;
+  }
+  if(col === 'emision'){
+    var ea = a.rec.factura.fechaFacturada || (segFactura(a.rec) && segFactura(a.rec).fechaFacturada) || '';
+    var eb = b.rec.factura.fechaFacturada || (segFactura(b.rec) && segFactura(b.rec).fechaFacturada) || '';
+    if(!ea && !eb) return a.client.cliente.localeCompare(b.client.cliente, 'es');
+    if(!ea) return 1;
+    if(!eb) return -1;
+    if(ea !== eb) return ea.localeCompare(eb) * dir;
+    return a.client.cliente.localeCompare(b.client.cliente, 'es');
+  }
+  if(col === 'vencimiento'){
+    var va = a.rec.factura.fechaVencimiento || (segFactura(a.rec) && segFactura(a.rec).fechaVencimiento) || '';
+    var vb = b.rec.factura.fechaVencimiento || (segFactura(b.rec) && segFactura(b.rec).fechaVencimiento) || '';
+    if(!va && !vb) return a.client.cliente.localeCompare(b.client.cliente, 'es');
+    if(!va) return 1;
+    if(!vb) return -1;
+    if(va !== vb) return va.localeCompare(vb) * dir;
+    return a.client.cliente.localeCompare(b.client.cliente, 'es');
+  }
+  if(col === 'total'){
+    var ta = recTotalFacturado(a.rec) || 0;
+    var tb = recTotalFacturado(b.rec) || 0;
+    if(ta === 0 && tb === 0) return a.client.cliente.localeCompare(b.client.cliente, 'es');
+    if(ta === 0) return 1;
+    if(tb === 0) return -1;
+    if(ta !== tb) return (ta - tb) * dir;
+    return a.client.cliente.localeCompare(b.client.cliente, 'es');
+  }
+  if(col === 'estado'){
+    var sa = (STATUS_DEFS[a.status] ? STATUS_DEFS[a.status].label : a.status).toLowerCase();
+    var sb = (STATUS_DEFS[b.status] ? STATUS_DEFS[b.status].label : b.status).toLowerCase();
+    if(sa !== sb) return sa.localeCompare(sb, 'es') * dir;
+    if(a.rec.periodo !== b.rec.periodo) return (b.rec.periodo || '').localeCompare(a.rec.periodo || '');
+    return a.client.cliente.localeCompare(b.client.cliente, 'es');
+  }
+  if(col === 'factoring'){
+    var fcta = getRecFactoringText(a.rec);
+    var fctb = getRecFactoringText(b.rec);
+    if(!fcta && !fctb){
+      if(a.rec.periodo !== b.rec.periodo) return (b.rec.periodo || '').localeCompare(a.rec.periodo || '');
+      return a.client.cliente.localeCompare(b.client.cliente, 'es');
+    }
+    if(!fcta) return 1;
+    if(!fctb) return -1;
+    if(fcta.toLowerCase() !== fctb.toLowerCase()) return fcta.localeCompare(fctb, 'es') * dir;
+    return (b.rec.periodo || '').localeCompare(a.rec.periodo || '');
+  }
+  if(a.rec.periodo !== b.rec.periodo) return b.rec.periodo.localeCompare(a.rec.periodo);
+  return a.client.cliente.localeCompare(b.client.cliente);
+}
+
 function filteredRecords(){
-  return allRecordsList().filter(passesFilters).sort(function(a,b){
-    if(a.rec.periodo !== b.rec.periodo) return b.rec.periodo.localeCompare(a.rec.periodo);
-    return a.client.cliente.localeCompare(b.client.cliente);
+  return allRecordsList().filter(passesFilters).sort(compareRecords);
+}
+
+function syncSortUI(){
+  var sel = document.getElementById('fOrden');
+  if(sel && sel.value !== sortState.col) sel.value = sortState.col;
+  var dirBtn = document.getElementById('btnSortDir');
+  if(dirBtn){
+    dirBtn.textContent = (sortState.dir === 'asc') ? '↑ Asc' : '↓ Desc';
+  }
+  var ths = document.querySelectorAll('#tblSortHeaderRow th[data-sort]');
+  Array.prototype.forEach.call(ths, function(th){
+    var c = th.getAttribute('data-sort');
+    var arrow = th.querySelector('.sort-arrow');
+    if(c === sortState.col){
+      th.classList.add('th-sorted');
+      if(arrow) arrow.textContent = (sortState.dir === 'asc') ? '↑' : '↓';
+    } else {
+      th.classList.remove('th-sorted');
+      if(arrow) arrow.textContent = '↕';
+    }
   });
+}
+
+function setSort(col, dir){
+  if(dir){
+    sortState.col = col;
+    sortState.dir = dir;
+  } else if(sortState.col === col){
+    sortState.dir = (sortState.dir === 'asc') ? 'desc' : 'asc';
+  } else {
+    sortState.col = col;
+    sortState.dir = (col === 'cliente' || col === 'estado' || col === 'factoring') ? 'asc' : 'desc';
+  }
+  syncSortUI();
+  renderTable();
 }
 
 /* ---------- Helpers de ruta ---------- */
@@ -4852,6 +5201,17 @@ function renderFilterOptions(){
   ].concat(Object.keys(STATUS_DEFS).map(function(k){ return { label: STATUS_DEFS[k].label, value: k }; }));
   fillDatalist('dlEstado', filterOpts.estado);
   setFilterInput('fEstado', 'estado');
+
+  var dlFact = document.getElementById('dlFactoringCol');
+  if(dlFact){
+    var factOpts = ['Con factoring', 'Sin factoring'];
+    (state.entidades || []).forEach(function(e){
+      var n = (typeof e === 'string') ? e : (e && e.razon ? e.razon : '');
+      if(n && factOpts.indexOf(n) === -1) factOpts.push(n);
+    });
+    dlFact.innerHTML = factOpts.map(function(x){ return '<option value="'+esc(x)+'"></option>'; }).join('');
+  }
+  syncSortUI();
 }
 function wireFilterInput(inputId, kind){
   var el = document.getElementById(inputId); if(!el) return;
@@ -6406,8 +6766,66 @@ function initEvents(){
   wireFilterInput('fCliente', 'cliente');
   wireFilterInput('fPeriodo', 'periodo');
   wireFilterInput('fEstado', 'estado');
+  var fOrdenEl = document.getElementById('fOrden');
+  if(fOrdenEl){
+    fOrdenEl.addEventListener('change', function(e){
+      var col = e.target.value;
+      var defaultDir = (col === 'cliente' || col === 'estado' || col === 'factoring') ? 'asc' : 'desc';
+      setSort(col, defaultDir);
+    });
+  }
+  var btnSortDirEl = document.getElementById('btnSortDir');
+  if(btnSortDirEl){
+    btnSortDirEl.addEventListener('click', function(){
+      setSort(sortState.col, sortState.dir === 'asc' ? 'desc' : 'asc');
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('#tblSortHeaderRow th[data-sort]'), function(th){
+    th.addEventListener('click', function(){
+      setSort(th.getAttribute('data-sort'));
+    });
+  });
+  function clearAllColFilters(){
+    colFilters = { cliente:'', periodo:'', factura:'', emision:'', vencimiento:'', total:'', estado:'', factoring:'' };
+    Array.prototype.forEach.call(document.querySelectorAll('.col-filter-input[data-col-filter]'), function(inp){
+      inp.value = '';
+      inp.classList.remove('has-val');
+    });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.col-filter-input[data-col-filter]'), function(inp){
+    var colKey = inp.getAttribute('data-col-filter');
+    var handleColFilter = debounce(function(){
+      colFilters[colKey] = inp.value;
+      inp.classList.toggle('has-val', !!inp.value.trim());
+      renderKPIs();
+      renderTable();
+    }, 150);
+    inp.addEventListener('input', handleColFilter);
+    inp.addEventListener('change', handleColFilter);
+  });
+  var btnClearColEl = document.getElementById('btnClearColFilters');
+  if(btnClearColEl){
+    btnClearColEl.addEventListener('click', function(){
+      clearAllColFilters();
+      sortState = { col: 'periodo', dir: 'desc' };
+      syncSortUI();
+      renderKPIs();
+      renderTable();
+    });
+  }
   document.getElementById('fBuscar').addEventListener('input', debounce(function(e){ filters.buscar = e.target.value; renderKPIs(); renderTable(); renderTech(); renderMatrix(); }, 200));
-  document.getElementById('btnClearFilters').addEventListener('click', function(){ filters = {cliente:'', periodo:'', estado:'', buscar:''}; document.getElementById('fBuscar').value = ''; renderFilterOptions(); renderKPIs(); renderTable(); renderTech(); renderMatrix(); renderDashboard(); });
+  document.getElementById('btnClearFilters').addEventListener('click', function(){
+    filters = {cliente:'', periodo:'', estado:'', buscar:''};
+    document.getElementById('fBuscar').value = '';
+    clearAllColFilters();
+    sortState = { col: 'periodo', dir: 'desc' };
+    renderFilterOptions();
+    renderKPIs();
+    renderTable();
+    renderTech();
+    renderMatrix();
+    renderDashboard();
+  });
   document.getElementById('btnNuevoRegistro').addEventListener('click', openNuevoRegistroModal);
   document.getElementById('btnAddPeriodo').addEventListener('click', openPeriodoModal);
   document.getElementById('btnNuevoCliente').addEventListener('click', function(){ openClientModal(null); });
