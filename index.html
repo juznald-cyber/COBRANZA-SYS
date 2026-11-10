@@ -2350,22 +2350,6 @@ body:not(.theme-dark) .periodo-item {
       <input type="text" id="fEstado" list="dlEstado" placeholder="Todos — escribe para buscar" autocomplete="off">
       <datalist id="dlEstado"></datalist>
     </div>
-    <div class="fgroup">
-      <label>Organizar por</label>
-      <div style="display:flex;gap:6px;align-items:center;">
-        <select id="fOrden" style="min-width:150px;">
-          <option value="periodo">Periodo</option>
-          <option value="cliente">Cliente / Servicio</option>
-          <option value="factura">N° Factura</option>
-          <option value="emision">Emisión</option>
-          <option value="vencimiento">Vencimiento</option>
-          <option value="total">Total facturado</option>
-          <option value="estado">Estado</option>
-          <option value="factoring">Factoring</option>
-        </select>
-        <button type="button" class="sort-dir-btn" id="btnSortDir" title="Cambiar orden Ascendente / Descendente">↓ Desc</button>
-      </div>
-    </div>
     <div class="fgroup" style="flex:1;">
       <label>Buscar</label>
       <input type="search" class="search" id="fBuscar" placeholder="Cliente, N° factura, RUT, entidad, OC, HES o monto…">
@@ -2412,20 +2396,6 @@ body:not(.theme-dark) .periodo-item {
             <th class="th-sortable" data-sort="estado" title="Clic para organizar por Estado"><span class="th-sort-wrap">Estado <span class="sort-arrow">↕</span></span></th>
             <th class="th-sortable" data-sort="factoring" title="Clic para organizar por Factoring"><span class="th-sort-wrap">Factoring <span class="sort-arrow">↕</span></span></th>
             <th></th>
-          </tr>
-          <tr class="col-filter-row">
-            <th><input type="text" class="col-filter-input" data-col-filter="cliente" placeholder="Filtrar cliente / serv…" autocomplete="off"></th>
-            <th><input type="text" class="col-filter-input" data-col-filter="periodo" list="dlPeriodo" placeholder="Periodo…" autocomplete="off"></th>
-            <th><input type="text" class="col-filter-input" data-col-filter="factura" placeholder="N° factura…" autocomplete="off"></th>
-            <th><input type="text" class="col-filter-input" data-col-filter="emision" placeholder="Ej: nov 2026…" autocomplete="off"></th>
-            <th><input type="text" class="col-filter-input" data-col-filter="vencimiento" placeholder="Ej: dic 2026…" autocomplete="off"></th>
-            <th><input type="text" class="col-filter-input" data-col-filter="total" placeholder="Monto $…" autocomplete="off"></th>
-            <th><input type="text" class="col-filter-input" data-col-filter="estado" list="dlEstado" placeholder="Estado…" autocomplete="off"></th>
-            <th>
-              <input type="text" class="col-filter-input" data-col-filter="factoring" list="dlFactoringCol" placeholder="Entidad / Sí / No…" autocomplete="off">
-              <datalist id="dlFactoringCol"></datalist>
-            </th>
-            <th style="text-align:center;"><button type="button" class="btn btn-ghost btn-sm" id="btnClearColFilters" title="Limpiar filtros de columnas" style="padding:3px 8px;font-size:11px;">✕</button></th>
           </tr>
         </thead>
         <tbody id="tblBody"></tbody>
